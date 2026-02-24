@@ -1,0 +1,287 @@
+LeakSight V1 — Pilot Readiness Checklist
+
+Every item below is a hard gate. There are no "nice to have" items on this list — those belong in a backlog. If any single item is marked NO, you do not go to pilot. The purpose is not to have a perfect product. The purpose is to ensure you do not show a client something that will embarrass you, lose their trust, or produce a wrong number.
+A wrong number shown to a CFO is worse than no number at all.
+How to run this checklist:
+Mark each item as YES or NO — no partials, no maybes
+All testing must be done in the pilot environment, not your dev environment
+Sections 4, 8, and 11 must be validated by someone who did not build the system
+Re-test every item that was previously marked NO after fixing it — do not assume the fix worked
+
+SECTION 1 — DATA INTEGRITY
+These conditions ensure that what the system produces is actually true.
+— Leakage amounts are mathematically correct
+        The system is deterministic across runs
+Take your prepared demo dataset
+Run the full pipeline on it twice, back to back, with no data changes between runs
+Export the leakage_records from both runs as JSON
+Compare: leakage amounts, confidence scores, evidence_jsonb contents, and leakage types must be byte-for-byte identical across both runs
+If any field differs between run one and run two, you have a non-determinism bug — do not go to pilot
+This test must pass before any other Section 1 test is run, because if the system is not deterministic, every other correctness test is meaningless
+Take three known leakage scenarios with manually calculated expected outputs
+Run them through the system
+System output must match manual calculation exactly — not approximately, exactly
+If any of the three produce a wrong number, do not go to pilot
+1.2 — Evidence always traces back to source
+For every leakage record the system generates, click through to its evidence_jsonb
+Confirm the invoice line item reference is real and points to the correct uploaded document
+Confirm the contract line item reference is real and points to the correct contract version
+Confirm the calculation shown in the evidence matches what the rule actually computed
+There must be zero leakage records where the evidence trail is broken or missing
+1.3 — No leakage record exists without a human-readable explanation
+Query all leakage records in the DB
+Confirm every single record has a non-null, non-empty explanation string
+The explanation must be readable by a non-technical person — have someone outside the engineering team read three of them and confirm they understand what was found and why
+1.4 — The system never guesses a price
+Identify at least two scenarios where contract pricing is missing or ambiguous
+Confirm the system skips Rule 1 for those line items rather than inferring a price
+Confirm no leakage record exists for those line items
+1.5 — The system never guesses an FX rate
+Upload an invoice in a currency for which no FX rate exists in the system
+Confirm the leakage record is created with status PENDING_FX_RATE
+Confirm no amount is calculated for that record
+Confirm the system does not use a rate from a different date as a proxy
+1.6 — Accepted leakage records are immutable
+Accept three leakage records via the UI
+Attempt to edit their amounts via the API
+Attempt to edit their amounts directly at the DB level
+Both attempts must fail
+Confirm the DB trigger is active and firing correctly
+1.7 — Confidence scores are honest
+Find three leakage records where the match was fuzzy (not GST exact, not alias)
+Confirm their confidence scores are below 1.0
+Confirm they appear in the review queue rather than being auto-accepted
+A 100% confidence score must only appear on GST exact matches or alias matches
+
+SECTION 2 — DOCUMENT PROCESSING
+These conditions ensure the system can handle real enterprise documents without breaking.
+2.1 — All supported formats parse without crashing
+Upload one clean digital PDF invoice → confirm parse succeeds
+Upload one clean Excel invoice → confirm parse succeeds
+Upload one clean CSV → confirm parse succeeds
+Upload one clean Word contract → confirm parse succeeds
+Upload one scanned PDF → confirm parse succeeds or is flagged with a clear failure message (not a crash)
+2.2 — Malformed documents fail gracefully
+Upload a password-protected PDF → confirm a clear failure message, not a crash
+Upload a corrupted Excel file → confirm a clear failure message, not a crash
+Upload an empty PDF → confirm a clear failure message, not a crash
+In all three cases confirm the run continues processing other documents in the batch
+2.3 — Re-upload does not corrupt data
+Upload a document, parse it, normalize it
+Upload the same document again
+Confirm a new raw_version row is created, the old one is untouched
+Confirm the canonical layer reflects the latest parse without duplicating records
+2.4 — Large files do not cause timeouts or memory failures
+Upload a PDF contract of at least 50 pages
+Upload an Excel file with at least 1,000 line items
+Both must process to completion without a worker crash or timeout
+If either fails, do not go to pilot — the first real client will have files larger than your test samples
+2.5 — SHA-256 hash is recorded for every uploaded document
+Upload five documents of different types
+Confirm document_hashes table has a BASELINE record for each one
+Confirm the hash is correct by independently computing it and comparing
+2.6 — Low confidence parses are visible, not hidden
+Upload a low-quality scanned PDF that produces parse_confidence below manual_review_threshold
+Confirm the document is flagged in the UI
+Confirm the run status shows PARTIAL_SUCCESS, not COMPLETE
+Confirm the user can still see and act on whatever was successfully parsed
+
+SECTION 3 — LEAKAGE DETECTION ACCURACY
+These conditions verify each rule works correctly end-to-end.
+3.1 — Rule 1 (Price Mismatch) fires correctly
+Create a contract with a known unit price for Item A
+Upload an invoice for Item A at a higher unit price
+Confirm leakage record created with correct overcharge amount
+Confirm contract version validity dates were checked (not just latest contract)
+Confirm unit conversion was applied where units differ and the conversion detail is in evidence_jsonb
+3.2 — Rule 1 does not fire when it should not
+Upload an invoice for Item A at the exact contract price → confirm no leakage record
+Upload an invoice for Item A with no matching contract → confirm no leakage record (not a false positive)
+Upload an invoice dated outside the contract validity period → confirm the rule skips, does not use the out-of-date contract price
+3.3 — Rule 2 (Duplicate Invoice) fires correctly
+Upload the same invoice twice → confirm exact duplicate detected
+Upload two invoices from the same vendor with the same amount within the duplicate window → confirm near-duplicate detected
+Confirm both duplicate records have clear evidence referencing both invoice document IDs
+3.4 — Rule 2 does not fire when it should not
+Upload two invoices from the same vendor with different amounts → confirm no duplicate flag
+Upload two invoices with the same amount from different vendors → confirm no duplicate flag
+Upload two invoices with the same amount from the same vendor outside the duplicate window → confirm no duplicate flag
+3.5 — Rule 3 (Quantity Mismatch) fires correctly
+Upload a PO for 100 units, a GRN for 80 units, an invoice for 100 units → confirm quantity mismatch detected against GRN (80), not PO (100)
+Upload a PO for 100 units, no GRN, an invoice for 120 units → confirm quantity mismatch detected against PO (100)
+3.6 — Rule 3 does not fire when it should not
+Upload a PO and invoice with matching quantities → confirm no flag
+Upload an invoice with no PO and no GRN → confirm Rule 3 skips entirely, no false positive
+
+SECTION 4 — REVIEW WORKFLOW
+These conditions ensure the reviewer experience works correctly before a real human uses it.
+4.1 — All pending leakage records appear in the review queue
+Trigger a run that produces at least five leakage records
+Confirm all five appear in the review screen with status PENDING
+Confirm none are auto-accepted (V1 requires human review for all records)
+4.2 — Accept flow works end-to-end
+Accept a leakage record with a note
+Confirm status changes to ACCEPTED
+Confirm the action is logged with user_id and timestamp
+Confirm the record no longer appears in the pending queue
+Confirm the record appears in the accepted list
+4.3 — Reject flow works end-to-end
+Attempt to reject a record without a note → must be blocked (note is required on rejection)
+Reject a record with a note
+Confirm status changes to REJECTED
+Confirm the action is logged with user_id and timestamp
+Confirm the record no longer appears in the pending queue
+4.4 — PENDING_FX_RATE records are clearly visible and actionable
+Upload FX rate via admin screen
+Confirm PENDING_FX_RATE records update correctly after rate is available
+The reviewer must never be left looking at a stuck record with no explanation of why it is stuck
+4.5 — Reviewer cannot edit financial data
+Confirm there is no input field anywhere in the review UI that allows editing of amount, leakage_type, confidence, or evidence
+The reviewer's only actions are: accept, reject, add note
+
+SECTION 5 — REPORTING
+These conditions ensure the output you hand to a CFO is correct and complete.
+5.1 — CFO summary answers the four questions
+Generate a CFO summary report for a completed run
+Confirm it answers: how much total leakage, from which vendors, under which rule, at what confidence level
+Have someone who was not involved in building the system read the report and confirm they understand it without any explanation from you
+5.2 — Evidence pack is defensible
+Pick the three highest-value leakage findings
+For each one, confirm the evidence pack shows: the specific invoice line item, the specific contract line item, the exact calculation, the confidence score, and the rule that fired
+If a vendor disputed any of these findings in a meeting, could you defend it using only the evidence pack? If the answer is no for any of them, do not go to pilot
+5.3 — Excel export is clean
+Download the Excel export for a completed run
+Open it and confirm: no broken formulas, no merged cells that hide data, numbers formatted as numbers (not text), vendor names consistent across sheets, totals on the summary sheet match the sum of line items
+5.4 — Reports reflect accepted and rejected status correctly
+Accept two records and reject one
+Regenerate the report
+Confirm the report only includes ACCEPTED records in the financial totals
+Confirm rejected records are either excluded or clearly marked as rejected — they must never inflate the leakage figure
+5.5 — Report generation does not crash on edge cases
+Generate a report for a run with zero leakage found → must produce a clean zero-leakage report, not an error
+Generate a report for a run with PARTIAL_SUCCESS status → must note what was incomplete, not pretend the run was clean
+
+SECTION 6 — SECURITY & DATA SAFETY
+These conditions protect you and the client before any real financial data enters the system.
+6.1 — Tenant isolation is confirmed unbreakable
+Create two tenants with separate data
+Log in as Tenant A and attempt to query Tenant B's leakage records via the API
+The response must be empty or 403 — never Tenant B's data
+Confirm this at the DB level too: run a query as the app_tenant_user role with Tenant A's context and confirm Tenant B's rows are invisible
+6.2 — No document data is accessible without authentication
+Attempt to access any API endpoint without a valid JWT token
+All endpoints must return 401
+Attempt to access a document file directly via its storage path URL without authentication
+Must return 401 or 403 — never the file
+6.3 — Uploaded documents are not publicly accessible
+Confirm document storage volume is not exposed on any public URL
+Files are only served via authenticated API endpoints
+6.4 — Encryption at rest is confirmed
+Confirm the PostgreSQL data volume is encrypted at the host level
+Confirm the document storage volume is encrypted at the host level
+6.5 — Encryption in transit is confirmed
+All API endpoints must be served over HTTPS
+Attempt to connect over HTTP → must redirect to HTTPS or refuse connection
+Confirm TLS certificate is valid and not self-signed for the pilot environment
+6.6 — Audit log is writing correctly
+Perform the following actions: upload a document, accept a leakage record, reject a leakage record, change a tenant setting
+Confirm each action has a corresponding audit log entry with user_id, tenant_id, action type, and timestamp
+Confirm audit logs cannot be deleted by a regular tenant user
+6.7 — Data deletion workflow exists
+Confirm there is a documented procedure to fully delete a tenant's data on request
+Run the procedure in a test environment and confirm all documents, parses, canonical records, leakage records, and logs for that tenant are removed
+This must exist before pilot because the client may ask about it
+6.8 — No PII or financial data in logs
+Run the automated logging compliance test from Phase 10.9
+It must pass with zero violations
+Manually spot-check three task logs and three request logs to confirm
+
+SECTION 7 — STABILITY & PERFORMANCE
+These conditions ensure the system does not fall over during the pilot.
+7.1 — The system handles the expected pilot data volume
+The V1 PRD targets 10,000 invoices per client
+Run a batch of at least 1,000 invoices before pilot (do not wait for 10,000 in production to be your first real test)
+Processing must complete without worker crash, memory exhaustion, or database lock
+If 1,000 invoices causes instability, fix it before showing the product to anyone
+7.2 — No silent failures exist
+Review all Celery task failure handling
+Confirm every failure path results in a visible status update (FAILED or PARTIAL_SUCCESS) and a written error_summary
+There must be zero scenarios where a task fails and the user sees PROCESSING forever
+7.3 — The system recovers from a worker restart
+Kill the Celery worker mid-task
+Restart it
+Confirm the task resumes or is re-queued — it must not disappear silently
+Confirm no data corruption occurred from the interrupted task
+7.4 — The UI does not show loading states indefinitely
+Confirm every polling operation (run status, report generation) has a timeout
+If processing takes longer than expected, the UI must show a clear message — not an infinite spinner
+7.5 — The system handles a database restart gracefully
+Restart the PostgreSQL container
+Confirm the application reconnects automatically
+Confirm no in-flight tasks produced corrupt data
+
+SECTION 8 — PILOT OPERATIONS
+These conditions ensure you are operationally ready to run the pilot, not just technically ready.
+8.1 — Client notification works end-to-end
+Trigger a completed analysis run
+Confirm the client receives an in-app notification
+Confirm the client receives an email notification
+The email must clearly state: run completed, total leakage found, how many records need review, and what action they should take next
+8.2 — You can ingest the client's actual file formats
+Before the pilot meeting, ask the client what format their invoices and contracts come in
+Upload a sample file in each format they will provide
+Confirm parsing works on their specific files, not just your test files
+Do not discover on pilot day that their ERP exports a format you cannot parse
+8.3 — You have a rollback plan
+If the pilot demo breaks, what do you do?
+Document the rollback procedure: how to restore the DB to a known clean state, how to re-upload the demo dataset, how to restart all services from scratch in under 15 minutes
+Rehearse this procedure at least once before the pilot
+8.4 — Demo dataset is prepared and verified
+Prepare a clean demo dataset: contracts, invoices, POs with known leakage embedded at known amounts
+Run the full pipeline on this dataset in the pilot environment (not your dev environment)
+Confirm the expected leakage records appear with the expected amounts
+Do not use live client data for a demo — use your prepared dataset
+8.5 — All services start reliably from a clean boot
+Shut down all containers completely
+Run docker-compose up from scratch
+Confirm all services come up healthy without manual intervention
+Confirm the application is accessible within 2 minutes of boot
+8.6 — You can create a new tenant in under 5 minutes
+Walk through the full tenant creation process
+Confirm you can create the account, set base currency, set thresholds, and have the system ready to receive uploads in under 5 minutes
+If this takes 30 minutes of manual DB operations, fix it before pilot
+8.7 — Someone other than the builder has used the product
+Have at least one person who was not involved in building the system complete the full workflow: upload files, trigger a run, review findings, accept records, download the report
+Document every point of confusion they encountered
+Fix anything that required you to explain what to do
+If the CFO cannot understand the review screen without your narration, the screen is not ready
+
+SECTION 9 — KNOWN LIMITATIONS DOCUMENTED
+These conditions ensure you do not get caught off-guard by questions you should have anticipated.
+9.1 — You have a written list of V1 limitations
+Document every known limitation of V1 before the pilot: no real-time processing, quarterly/monthly usage model, no direct ERP integration, no API ingestion, accuracy targets by document type
+If the client asks about any of these, you have a prepared, honest answer
+9.2 — You know what happens when a client uploads something you cannot handle
+What happens if they upload a 500-page contract in a language other than English?
+What happens if their invoices have no line items, just a lump sum?
+What happens if their contract has no pricing table, only narrative pricing?
+You do not need to handle all of these in V1. You need to know what the system does and have an honest answer ready.
+9.3 — You have not over-promised the accuracy
+The PRD states ≥85% for digital PDFs and ≥70% for scanned PDFs
+In your pilot conversation, do not claim higher accuracy than these targets
+Have a real example of a partial parse result ready to show — it demonstrates honesty and builds more trust than a perfect demo
+
+PILOT READINESS GATE
+Section 1  —  Data Integrity          (7 conditions)   ALL must be YES
+Section 2  —  Document Processing     (6 conditions)   ALL must be YES
+Section 3  —  Detection Accuracy      (6 conditions)   ALL must be YES
+Section 4  —  Review Workflow         (5 conditions)   ALL must be YES
+Section 5  —  Reporting               (5 conditions)   ALL must be YES
+Section 6  —  Security & Data Safety  (8 conditions)   ALL must be YES
+Section 7  —  Stability & Performance (5 conditions)   ALL must be YES
+Section 8  —  Pilot Operations        (7 conditions)   ALL must be YES
+Section 9  —  Known Limitations       (3 conditions)   ALL must be YES
+Total: 52 conditions. All 52 must be YES.
+If you have 51 YES and 1 NO, the answer is: fix the one NO before you go.
+The goal of the pilot is not to show a finished product. It is to show a trustworthy one. A CFO who sees a wrong number once will not trust the right numbers. A CFO who sees a system that is honest about its limitations, produces defensible evidence, and never crashes mid-demo will pay for the next engagement.
+

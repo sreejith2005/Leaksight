@@ -1,0 +1,69 @@
+# ===========================
+# LeakSight V1 — .gitignore
+# ===========================
+
+# Environment variables — NEVER commit
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker
+docker-compose.override.yml
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/build/
+*.tsbuildinfo
+
+# Logs
+*.log
+logs/
+
+# Database
+*.sql.gz
+*.dump
+
+# Document storage (never commit client data)
+data/
+documents/
+
+# Byte-compiled / optimized
+*.pyc
+*.pyo
+
+# Pytest
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Alembic
+alembic/versions/__pycache__/
+
+# Temporary files
+*.tmp
+*.bak

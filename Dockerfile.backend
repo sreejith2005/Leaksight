@@ -1,0 +1,88 @@
+# ===========================
+# LeakSight V1 — Backend Dockerfile
+# ===========================
+# Source: docs/ARCHITECTURE.md, LeakSight Infra Guide V2.md Section 14
+#
+# Multi-stage build:
+#   Stage 1 (builder): Install Python deps + compile wheels
+#   Stage 2 (runtime): Slim image with only runtime deps
+#
+# System dependencies:
+#   - WeasyPrint: libcairo2, libpango-1.0-0, libpangocairo-1.0-0,
+#                 libgdk-pixbuf2.0-0, libffi-dev, shared-mime-info
+#   - PDF tools: ghostscript, poppler-utils
+#   - PaddleOCR: libgomp1, libgl1-mesa-glx, libglib2.0-0
+
+# --- Stage 1: Builder ---
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# Install build-time dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libffi-dev \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libgdk-pixbuf2.0-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+
+# --- Stage 2: Runtime ---
+FROM python:3.11-slim
+
+LABEL maintainer="LeakSight <ops@leaksight.io>"
+LABEL description="LeakSight V1 backend — financial leakage detection engine"
+LABEL version="1.0.0"
+
+# Create non-root user
+RUN groupadd -r leaksight && useradd -r -g leaksight -d /app -s /sbin/nologin leaksight
+
+# Install runtime system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # WeasyPrint runtime deps
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf2.0-0 \
+    libffi8 \
+    shared-mime-info \
+    # PDF processing
+    ghostscript \
+    poppler-utils \
+    # PaddleOCR runtime deps
+    libgomp1 \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    # Utilities
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python packages from builder
+COPY --from=builder /install /usr/local
+
+WORKDIR /app
+
+# Copy application code
+COPY backend/ ./backend/
+COPY backend/app/ ./app/
+
+# Create data and log directories
+RUN mkdir -p /app/data/documents /app/logs \
+    && chown -R leaksight:leaksight /app
+
+# Switch to non-root user
+USER leaksight
+
+# Expose API port
+EXPOSE 8000
+
+# Health check — hit FastAPI health endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+
+# Default command — overridden by docker-compose for worker
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
