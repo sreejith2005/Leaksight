@@ -12,12 +12,12 @@ export function Layout() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div className="noise-overlay" style={{ display: 'flex', minHeight: '100vh' }}>
       <Sidebar />
       <div
         style={{
           flex: 1,
-          marginLeft: 240,
+          marginLeft: 'var(--sidebar-width)',
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -26,13 +26,15 @@ export function Layout() {
         <main
           style={{
             flex: 1,
-            marginTop: 56,
-            padding: 'var(--space-6)',
-            backgroundColor: 'var(--color-black)',
-            minHeight: 'calc(100vh - 56px)',
+            marginTop: 'var(--topbar-height)',
+            padding: 'var(--content-padding)',
+            backgroundColor: 'var(--bg-base)',
+            minHeight: 'calc(100vh - var(--topbar-height))',
           }}
         >
-          <Outlet />
+          <div style={{ maxWidth: 'var(--content-max-width)', margin: '0 auto', width: '100%' }}>
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

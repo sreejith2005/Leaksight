@@ -27,7 +27,7 @@ export function EmptyState({ icon, title, description, actionLabel, onAction }: 
           height="48"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="var(--color-muted)"
+          stroke="var(--text-muted)"
           strokeWidth="1.5"
         >
           <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -37,9 +37,10 @@ export function EmptyState({ icon, title, description, actionLabel, onAction }: 
       )}
       <h3
         style={{
-          fontSize: '16px',
-          fontWeight: 700,
-          color: 'var(--color-white)',
+          fontFamily: 'var(--font-display)',
+          fontSize: 'var(--text-lg)',
+          fontWeight: 600,
+          color: 'var(--text-primary)',
           marginTop: 'var(--space-4)',
         }}
       >
@@ -48,10 +49,11 @@ export function EmptyState({ icon, title, description, actionLabel, onAction }: 
       {description && (
         <p
           style={{
-            fontSize: '14px',
-            color: 'var(--color-muted)',
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-secondary)',
             marginTop: 'var(--space-2)',
-            maxWidth: 320,
+            maxWidth: 360,
+            lineHeight: 1.6,
           }}
         >
           {description}

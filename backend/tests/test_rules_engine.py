@@ -78,6 +78,7 @@ def _make_line_item(**overrides):
 def _make_contract_version(**overrides):
     cv = MagicMock()
     cv.id = overrides.get("id", CONTRACT_VERSION_ID)
+    cv.contract_id = overrides.get("contract_id", uuid4())
     cv.version_number = overrides.get("version_number", 1)
     cv.valid_from = overrides.get("valid_from", date(2024, 1, 1))
     cv.valid_to = overrides.get("valid_to", date(2024, 12, 31))
@@ -170,9 +171,10 @@ async def test_rule1_overlap_confidence_05(mock_contract):
         ContractResolutionStatus,
     )
 
+    shared_contract_id = uuid4()
     mock_contract.return_value = ContractResolutionResult(
         status=ContractResolutionStatus.OVERLAP,
-        versions=[_make_contract_version(), _make_contract_version()],
+        versions=[_make_contract_version(contract_id=shared_contract_id), _make_contract_version(contract_id=shared_contract_id)],
     )
 
     invoice = _make_invoice()
@@ -184,7 +186,7 @@ async def test_rule1_overlap_confidence_05(mock_contract):
     )
     assert result is not None
     assert result.confidence == 0.5
-    assert "overlapping" in result.explanation.lower()
+    assert "multiple contract versions" in result.explanation.lower() or "manual review" in result.explanation.lower()
 
 
 @pytest.mark.asyncio
@@ -292,8 +294,17 @@ async def test_rule2_near_duplicate():
     near_scalars.all.return_value = [near_dupe]
     near_result_mock.scalars.return_value = near_scalars
 
+    # Fourth call: source invoice line items for item_desc filtering
+    src_li_result_mock = MagicMock()
+    src_li_result_mock.fetchall.return_value = [("cement 43 grade",)]
+
+    # Fifth call: dupe invoice line items for item_desc filtering
+    dupe_li_result_mock = MagicMock()
+    dupe_li_result_mock.fetchall.return_value = [("cement 43 grade",)]
+
     db.execute = AsyncMock(
-        side_effect=[exact_result_mock, settings_mock, near_result_mock]
+        side_effect=[exact_result_mock, settings_mock, near_result_mock,
+                     src_li_result_mock, dupe_li_result_mock]
     )
 
     invoice = _make_invoice()

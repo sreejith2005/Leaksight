@@ -213,3 +213,21 @@ This document records all significant architectural decisions made for LeakSight
 - Status can still be changed (e.g., an admin might need to change from ACCEPTED to another state in exceptional cases — the trigger only protects financial data columns)
 - `review_notes`, `reviewed_by`, `reviewed_at` can still be updated
 - Direct SQL `UPDATE` on protected columns also blocked — provides true database-level guarantee
+
+---
+
+## ADR-013: Manual Review for Overlapping Contract Versions (Replaces Auto-Resolution)
+
+**Date:** 2026-03-01
+**Status:** ACCEPTED — LOCKED
+**Context:** When multiple contract versions are valid for a vendor on an invoice date (OVERLAP status from the contract resolver), the system must decide how to evaluate Rule 1 (Price Mismatch). A previous implementation (`_resolve_overlap_by_item()`) auto-resolved overlaps by selecting the contract version with the highest matching unit price. This was undocumented and not auditable.
+**Decision:** When multiple contract versions cover the same invoice date, the system creates a leakage record with `status=PENDING`, `confidence=0.50`, and an explanation stating "Multiple contract versions valid on this date — manual review required to confirm correct pricing." The system does NOT auto-resolve by picking the highest price.
+**Rejected Alternatives:**
+- **Auto-resolve by highest price** — Silently picks the most vendor-favorable contract price. Not auditable. A CFO cannot verify why one version was chosen over another. Implemented previously under time pressure and removed in this session.
+- **Auto-resolve by latest version** — Assumes the newest contract version is always correct. This is not true when backdated amendments exist.
+- **Skip entirely (return None)** — Silently drops the comparison. Violates the principle that overlaps should be visible to reviewers.
+**Consequences:**
+- Overlapping contract versions are visible in the leakage dashboard at 0.50 confidence
+- Reviewers can inspect the evidence (which includes all overlapping version IDs) and manually confirm the correct pricing
+- May increase the number of PRICE_MISMATCH records that require review — acceptable trade-off for auditability
+- `_resolve_overlap_by_item()` function is retained in rule1_price_mismatch.py for reference but no longer called

@@ -38,7 +38,7 @@ from backend.app.core.unit_converter import (
     UnknownUnitError,
     convert_units,
 )
-from backend.app.models.contracts import ContractLineItem
+from backend.app.models.contracts import ContractLineItem, ContractVersion, Contract
 from backend.app.models.tenant import TenantSettings
 
 
@@ -84,7 +84,7 @@ async def _match_item(
     """
     stmt = select(ContractLineItem).where(
         ContractLineItem.contract_version_id == contract_version_id
-    )
+    ).order_by(ContractLineItem.id.asc())
     result = await db.execute(stmt)
     contract_items: List = list(result.scalars().all())
 
@@ -109,6 +109,75 @@ async def _match_item(
         return best_match, best_score, "FUZZY"
 
     return None, 0.0, "NONE"
+
+
+async def _resolve_overlap_by_item(
+    invoice_item_desc: str,
+    invoice_currency: str,
+    vendor_id: UUID,
+    invoice_date,
+    tenant_id: UUID,
+    fuzzy_threshold: float,
+    db: AsyncSession,
+) -> tuple:
+    """For overlapping contract versions, batch-query all contract line items
+    across all valid versions and find the best match.
+
+    Strategy:
+    - Prefer same-currency matches (avoids PENDING_FX_RATE).
+    - Among the preferred pool, pick the HIGHEST contract unit price
+      (most vendor-favorable — only flag when invoice exceeds ALL).
+    - If no same-currency match, fall back to any-currency match.
+    - If no match at all → skip.
+
+    Returns (contract_version, matched_cli, confidence, method) or
+    (None, None, 0.0, "NONE") if no match.
+    """
+    # Single query: get ALL contract line items from ALL valid versions
+    stmt = (
+        select(ContractLineItem, ContractVersion)
+        .join(ContractVersion, ContractLineItem.contract_version_id == ContractVersion.id)
+        .join(Contract, ContractVersion.contract_id == Contract.id)
+        .where(
+            Contract.vendor_id == vendor_id,
+            Contract.tenant_id == tenant_id,
+            ContractVersion.valid_from <= invoice_date,
+            ContractVersion.valid_to > invoice_date,
+        )
+        .order_by(ContractLineItem.id.asc())
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    if not rows:
+        return None, None, 0.0, "NONE"
+
+    # Collect all matching items across all versions
+    matches = []  # List of (cli, confidence, method, cv)
+
+    # Try exact match first
+    for cli, cv in rows:
+        if cli.item_desc == invoice_item_desc:
+            matches.append((cli, 1.0, "EXACT", cv))
+
+    # If no exact matches, try fuzzy
+    if not matches:
+        for cli, cv in rows:
+            score = token_sort_ratio(invoice_item_desc, cli.item_desc) / 100.0
+            if score >= fuzzy_threshold:
+                matches.append((cli, score, "FUZZY", cv))
+
+    if not matches:
+        return None, None, 0.0, "NONE"
+
+    # Prefer same-currency matches to avoid needless FX conversion
+    same_currency = [m for m in matches if m[0].currency == invoice_currency]
+    pool = same_currency if same_currency else matches
+
+    # Pick the match with the HIGHEST contract unit price.
+    best = max(pool, key=lambda m: (m[0].unit_price, m[1]))
+    cli, conf, method, cv = best
+    return cv, cli, conf, method
 
 
 async def evaluate(
@@ -147,20 +216,38 @@ async def evaluate(
     if contract_result.status == ContractResolutionStatus.NONE:
         return None  # No contract for this period — skip
 
+    # ── Step 2: Item Matching ──────────────────────────────────────────
     if contract_result.status == ContractResolutionStatus.OVERLAP:
+        # Multiple overlapping contract versions exist.  Per PRD, overlaps
+        # must be flagged for manual review rather than auto-resolved.
+        # See DECISIONS.md ADR-013.
         explanation = (
-            f"Multiple overlapping contract versions found for vendor "
-            f"{vendor_name} on {invoice.invoice_date}. Manual review "
-            f"required to determine correct contract price."
+            f"Invoice {invoice.invoice_no} from {vendor_name}: multiple "
+            f"contract versions are valid on {invoice.invoice_date} "
+            f"for item '{invoice_line_item.item_desc}'. Manual review "
+            f"required to confirm correct pricing."
         )
         return RuleResult(
             leakage_type="PRICE_MISMATCH",
             amount=Decimal("0"),
             currency=invoice.currency,
-            confidence=0.5,
+            confidence=0.50,
             evidence_jsonb={
-                "contract_overlap": True,
-                "version_count": len(contract_result.versions),
+                "invoice_reference": {
+                    "invoice_id": str(invoice.id),
+                    "invoice_no": invoice.invoice_no,
+                    "line_item_id": str(invoice_line_item.id),
+                    "item_desc": invoice_line_item.item_desc,
+                    "unit_price": str(invoice_line_item.unit_price),
+                    "quantity": str(invoice_line_item.quantity),
+                    "unit": invoice_line_item.unit,
+                    "currency": invoice.currency,
+                },
+                "overlap_info": {
+                    "version_count": len(contract_result.versions),
+                    "version_ids": [str(v.id) for v in contract_result.versions],
+                    "resolution": "MANUAL_REVIEW_REQUIRED",
+                },
             },
             rule_applied="RULE_1_PRICE_MISMATCH",
             explanation=explanation,
@@ -169,17 +256,36 @@ async def evaluate(
             invoice_line_item_id=invoice_line_item.id,
         )
 
-    # Exactly 1 valid version
-    contract_version = contract_result.versions[0]
-
-    # ── Step 2: Item Matching ──────────────────────────────────────────
     fuzzy_threshold = await _get_fuzzy_threshold(tenant_id, db)
-    matched_cli, item_confidence, item_method = await _match_item(
-        invoice_item_desc=invoice_line_item.item_desc,
-        contract_version_id=contract_version.id,
-        fuzzy_threshold=fuzzy_threshold,
-        db=db,
-    )
+
+    if contract_result.status == ContractResolutionStatus.MULTI_CONTRACT:
+        # Multiple different contracts for the same vendor, each with exactly
+        # one version valid on this date.  Use item matching to find which
+        # contract covers this particular item.
+        cv, cli, conf, method = await _resolve_overlap_by_item(
+            invoice_item_desc=invoice_line_item.item_desc,
+            invoice_currency=invoice.currency,
+            vendor_id=invoice.vendor_id,
+            invoice_date=invoice.invoice_date,
+            tenant_id=tenant_id,
+            fuzzy_threshold=fuzzy_threshold,
+            db=db,
+        )
+        if cv is None:
+            return None  # No matching item across any contract — skip
+
+        contract_version = cv
+        matched_cli, item_confidence, item_method = cli, conf, method
+    else:
+        # Exactly 1 valid version (FOUND status)
+        contract_version = contract_result.versions[0]
+
+        matched_cli, item_confidence, item_method = await _match_item(
+            invoice_item_desc=invoice_line_item.item_desc,
+            contract_version_id=contract_version.id,
+            fuzzy_threshold=fuzzy_threshold,
+            db=db,
+        )
 
     if matched_cli is None:
         return None  # No matching contract line item — skip
@@ -233,6 +339,9 @@ async def evaluate(
         )
 
         if fx_result == PENDING_FX_RATE:
+            # No FX rate available — create a PENDING_FX_RATE record so the
+            # comparison is visible to reviewers and resolves when an admin
+            # uploads the missing rate.  Silent dropping violates the PRD.
             explanation = (
                 f"Price mismatch suspected but FX rate for "
                 f"{invoice_currency} to {contract_currency} on "

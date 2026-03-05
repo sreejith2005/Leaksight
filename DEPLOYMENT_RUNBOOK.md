@@ -437,6 +437,24 @@ Single EU server; latency to India acceptable for batch
 
 V2: Multi-region if needed
 
+13
+
+English-only document support
+
+Parsers assume English text. Non-English invoices, contracts, or POs may produce
+incorrect extractions or zero-confidence results. No language detection is performed.
+
+V2: Evaluate multi-language OCR / parser support based on pilot feedback
+
+14
+
+Narrative pricing not supported
+
+Documents containing pricing in prose paragraphs (rather than tabular line items)
+may not be extracted. System requires structured or semi-structured pricing data.
+
+V2: NLP-based extraction for narrative pricing
+
 ---
 
 ## Quick Reference Commands

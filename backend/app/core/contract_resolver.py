@@ -27,13 +27,16 @@ from backend.app.models.contracts import Contract, ContractVersion
 class ContractResolutionStatus(str, Enum):
     """Outcome of a contract version resolution attempt.
 
-    FOUND:   Exactly one valid version — clean match, proceed with rules.
-    OVERLAP: More than one valid version — flag for manual review.
-    NONE:    No valid version covers the invoice date — skip Rule 1.
+    FOUND:           Exactly one valid version — clean match, proceed with rules.
+    OVERLAP:         Same contract has >1 valid versions — flag for manual review.
+    MULTI_CONTRACT:  Multiple different contracts (each with 1 valid version)
+                     for the same vendor on this date — resolve by item match.
+    NONE:            No valid version covers the invoice date — skip Rule 1.
     """
 
     FOUND = "FOUND"
     OVERLAP = "OVERLAP"
+    MULTI_CONTRACT = "MULTI_CONTRACT"
     NONE = "NONE"
 
 
@@ -90,10 +93,27 @@ async def get_valid_contract_version(
             versions=versions,
         )
     elif len(versions) > 1:
-        return ContractResolutionResult(
-            status=ContractResolutionStatus.OVERLAP,
-            versions=versions,
-        )
+        # Distinguish true overlap (same contract, multiple versions) from
+        # multiple-contracts-same-vendor (different contracts, each with 1
+        # version valid on this date).
+        contract_ids = [v.contract_id for v in versions]
+        unique_contracts = set(contract_ids)
+        has_true_overlap = len(contract_ids) != len(unique_contracts)
+
+        if has_true_overlap:
+            # At least one contract has >1 version valid on this date
+            # → flag for manual review (confidence 0.5)
+            return ContractResolutionResult(
+                status=ContractResolutionStatus.OVERLAP,
+                versions=versions,
+            )
+        else:
+            # Different contracts for the same vendor, each with exactly
+            # one version valid on this date → resolve by item matching
+            return ContractResolutionResult(
+                status=ContractResolutionStatus.MULTI_CONTRACT,
+                versions=versions,
+            )
     else:
         return ContractResolutionResult(
             status=ContractResolutionStatus.NONE,

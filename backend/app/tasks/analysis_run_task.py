@@ -20,6 +20,7 @@ PARTIAL_SUCCESS conditions (explicit, not implied):
 """
 
 import asyncio
+import traceback
 from typing import List, Optional, Set
 from uuid import UUID
 
@@ -27,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.celery_app import celery_app
+from backend.app.core.celery_async import run_async as _run_async
 from backend.app.core.database import async_session_factory
 from backend.app.core.logging import get_logger
 from backend.app.core.tenant_context import set_tenant_context
@@ -41,15 +43,6 @@ from backend.app.services import analysis_run_service, leakage_service
 from backend.app.services.notification_service import send_run_notifications
 
 logger = get_logger(__name__)
-
-
-def _run_async(coro):
-    """Run an async coroutine from a sync Celery task context."""
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 def _build_partial_summary(
@@ -146,7 +139,7 @@ async def _run_analysis_async(run_id: UUID, tenant_id: UUID) -> dict:
             inv_stmt = select(Invoice).where(
                 Invoice.source_document_id.in_(document_ids),
                 Invoice.tenant_id == tenant_id,
-            )
+            ).order_by(Invoice.id.asc())
             inv_result = await db.execute(inv_stmt)
             invoices = list(inv_result.scalars().all())
 
@@ -194,7 +187,7 @@ async def _run_analysis_async(run_id: UUID, tenant_id: UUID) -> dict:
                 li_stmt = select(InvoiceLineItem).where(
                     InvoiceLineItem.invoice_id == invoice.id,
                     InvoiceLineItem.tenant_id == tenant_id,
-                )
+                ).order_by(InvoiceLineItem.id.asc())
                 li_result = await db.execute(li_stmt)
                 line_items = list(li_result.scalars().all())
 
@@ -350,6 +343,7 @@ async def _run_analysis_async(run_id: UUID, tenant_id: UUID) -> dict:
                 run_id=str(run_id),
                 tenant_id=str(tenant_id),
                 error_type=type(exc).__name__,
+                traceback=traceback.format_exc(),
             )
 
             return {

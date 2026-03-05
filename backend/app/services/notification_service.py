@@ -282,6 +282,15 @@ def send_email_smtp(
     """
     settings = get_settings()
 
+    # Skip email if SMTP is not properly configured (dev/test environments)
+    if not settings.smtp_host or not settings.smtp_from:
+        logger.info(
+            "email_skipped_no_smtp_config",
+            status="skipped",
+            component="notification_service",
+        )
+        return False
+
     try:
         msg = MIMEMultipart()
         msg["From"] = settings.smtp_from
@@ -289,11 +298,17 @@ def send_email_smtp(
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain", "utf-8"))
 
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
+        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30)
+        try:
             server.starttls()
             if settings.smtp_user and settings.smtp_password:
                 server.login(settings.smtp_user, settings.smtp_password)
             server.send_message(msg)
+        finally:
+            try:
+                server.quit()
+            except Exception:
+                server.close()
 
         logger.info(
             "email_sent_success",

@@ -1,5 +1,9 @@
 @import './variables.css';
 
+/* ── Google Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;0,6..72,700;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ── Reset ── */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -12,43 +16,145 @@ html, body, #root {
 }
 
 body {
-  background: var(--color-black);
-  color: var(--color-white);
-  font-family: var(--font-family);
-  font-size: 14px;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Links ── */
 a {
-  color: var(--color-orange);
+  color: var(--accent);
   text-decoration: none;
+  transition: color var(--transition-base);
 }
 
 a:hover {
-  text-decoration: underline;
+  color: var(--accent-hover);
+  text-decoration: none;
 }
 
+/* ── Form resets ── */
 input, select, textarea, button {
   font-family: inherit;
   font-size: inherit;
 }
 
+/* ── Selection ── */
+::selection {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* ── Scrollbar ── */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-black);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-muted);
-  border-radius: var(--border-radius);
+  background: var(--text-muted);
+  border-radius: var(--radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-grey);
+  background: var(--text-secondary);
+}
+
+/* ══════════════════════════════════════
+   KEYFRAMES
+   ══════════════════════════════════════ */
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes processingPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@keyframes giltBorderPulse {
+  0%, 100% { border-color: var(--accent-border); }
+  50% { border-color: var(--accent); }
+}
+
+/* ══════════════════════════════════════
+   UTILITY CLASSES
+   ══════════════════════════════════════ */
+
+.font-display { font-family: var(--font-display); }
+.font-body { font-family: var(--font-body); }
+.font-mono { font-family: var(--font-mono); }
+
+.animate-fadeIn {
+  animation: fadeIn 200ms ease-out both;
+}
+
+.animate-slideInUp {
+  animation: slideInUp 200ms ease-out both;
+}
+
+/* Staggered row animations — apply via inline style animationDelay */
+.animate-stagger {
+  animation: fadeIn 150ms ease-out both;
+}
+
+/* Focus ring for accessibility */
+.focus-gilt:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 4px var(--accent), var(--shadow-glow);
+}
+
+/* Noise texture overlay */
+.noise-overlay::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.015;
+  pointer-events: none;
+  z-index: 9999;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
 }

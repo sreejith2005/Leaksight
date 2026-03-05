@@ -39,10 +39,12 @@ def _mock_db_returning(versions: list):
     return db
 
 
-def _make_version(version_number: int = 1):
+def _make_version(version_number: int = 1, contract_id=None):
     """Create a fake ContractVersion-like object."""
     v = MagicMock()
     v.version_number = version_number
+    if contract_id is not None:
+        v.contract_id = contract_id
     return v
 
 
@@ -68,8 +70,10 @@ async def test_single_version_found():
 
 @pytest.mark.asyncio
 async def test_overlapping_versions():
-    v1 = _make_version(1)
-    v2 = _make_version(2)
+    """Same contract, two versions valid on the same date → OVERLAP."""
+    shared_contract_id = uuid4()
+    v1 = _make_version(1, contract_id=shared_contract_id)
+    v2 = _make_version(2, contract_id=shared_contract_id)
     db = _mock_db_returning([v1, v2])
 
     result = await get_valid_contract_version(
@@ -77,6 +81,21 @@ async def test_overlapping_versions():
     )
 
     assert result.status == ContractResolutionStatus.OVERLAP
+    assert len(result.versions) == 2
+
+
+@pytest.mark.asyncio
+async def test_multi_contract_versions():
+    """Different contracts, each with 1 version valid on same date → MULTI_CONTRACT."""
+    v1 = _make_version(1, contract_id=uuid4())
+    v2 = _make_version(1, contract_id=uuid4())
+    db = _mock_db_returning([v1, v2])
+
+    result = await get_valid_contract_version(
+        VENDOR_ID, date(2024, 6, 15), TENANT_ID, db
+    )
+
+    assert result.status == ContractResolutionStatus.MULTI_CONTRACT
     assert len(result.versions) == 2
 
 

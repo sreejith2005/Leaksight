@@ -17,7 +17,7 @@ const columns: ColumnDef<Vendor, unknown>[] = [
     accessorKey: 'normalized_name',
     header: 'Vendor Name',
     cell: ({ getValue }) => (
-      <span style={{ color: 'var(--color-white)', fontWeight: 500 }}>
+      <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
         {getValue() as string}
       </span>
     ),
@@ -28,7 +28,7 @@ const columns: ColumnDef<Vendor, unknown>[] = [
     cell: ({ getValue }) => {
       const raw = getValue() as string[];
       return (
-        <span style={{ fontSize: '12px' }}>
+        <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
           {raw.slice(0, 3).join(', ')}
           {raw.length > 3 ? ` +${raw.length - 3} more` : ''}
         </span>
@@ -77,28 +77,44 @@ export default function VendorsPage() {
   );
 
   return (
-    <div>
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-white)', marginBottom: 'var(--space-6)' }}>
+    <div className="animate-fadeIn">
+      <h1
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 'var(--text-3xl)',
+          fontWeight: 700,
+          color: 'var(--text-primary)',
+          marginBottom: 'var(--space-2)',
+          letterSpacing: '-0.01em',
+        }}
+      >
         Vendors
       </h1>
+      <p style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--space-6)' }}>
+        Normalized vendor directory
+      </p>
 
       {/* Search */}
-      <div style={{ marginBottom: 'var(--space-4)' }}>
+      <div style={{ marginBottom: 'var(--space-5)' }}>
         <input
           type="text"
           placeholder="Search vendors..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           style={{
-            backgroundColor: 'var(--color-prussian-blue)',
-            color: 'var(--color-grey)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-sm)',
-            padding: 'var(--space-2) var(--space-3)',
-            fontSize: '14px',
-            width: 280,
+            backgroundColor: 'var(--bg-surface-1)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-2) var(--space-4)',
+            fontFamily: 'var(--font-body)',
+            fontSize: 'var(--text-sm)',
+            width: 300,
             outline: 'none',
+            transition: 'border-color 200ms ease',
           }}
+          onFocus={(e) => { (e.target as HTMLElement).style.borderColor = 'var(--accent)'; }}
+          onBlur={(e) => { (e.target as HTMLElement).style.borderColor = 'var(--border-default)'; }}
         />
       </div>
 

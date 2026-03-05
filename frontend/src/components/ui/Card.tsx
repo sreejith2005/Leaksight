@@ -13,14 +13,15 @@ export function Card({ children, style, highlight, borderColor, onClick }: CardP
     <div
       onClick={onClick}
       style={{
-        background: 'var(--color-prussian-blue)',
+        background: 'var(--bg-surface-1)',
         border: highlight
-          ? `1px solid ${borderColor || 'var(--color-orange)'}`
-          : '1px solid var(--border-color)',
-        borderRadius: 'var(--border-radius)',
+          ? `1px solid ${borderColor || 'var(--accent)'}`
+          : '1px solid var(--border-subtle)',
+        borderRadius: 'var(--radius-lg)',
         padding: 'var(--space-6)',
-        color: 'var(--color-white)',
+        color: 'var(--text-primary)',
         cursor: onClick ? 'pointer' : undefined,
+        transition: 'border-color 150ms ease, box-shadow 150ms ease',
         ...style,
       }}
     >

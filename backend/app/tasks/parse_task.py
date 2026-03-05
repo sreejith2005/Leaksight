@@ -25,6 +25,8 @@ from celery import shared_task
 from sqlalchemy import select, update
 
 from backend.app.core.celery_app import celery_app
+from backend.app.core.celery_async import run_async as _run_async
+from backend.app.core.config import get_settings
 from backend.app.core.database import async_session_factory
 from backend.app.core.logging import get_logger
 from backend.app.core.tenant_context import set_tenant_context
@@ -33,15 +35,6 @@ from backend.app.parsers.parser_router import parse_document as route_to_parser
 from backend.app.services.parse_storage_service import store_parse_result
 
 logger = get_logger(__name__)
-
-
-def _run_async(coro):
-    """Run an async coroutine from a sync Celery task context."""
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 async def _parse_document_async(document_id: UUID, tenant_id: UUID) -> dict:
@@ -85,7 +78,10 @@ async def _parse_document_async(document_id: UUID, tenant_id: UUID) -> dict:
             await db.flush()
 
             # Step 5: Parse the document via parser_router
-            file_path = Path(doc.file_path)
+            # doc.file_path is relative (tenant_id/doc_id/filename);
+            # prepend document_storage_path to get the absolute path.
+            settings = get_settings()
+            file_path = Path(settings.document_storage_path) / doc.file_path
             parsed_document = route_to_parser(
                 file_path=file_path,
                 document_id=document_id,

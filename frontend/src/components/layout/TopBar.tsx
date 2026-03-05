@@ -20,17 +20,17 @@ export function TopBar() {
   return (
     <header
       style={{
-        height: 56,
-        backgroundColor: 'var(--color-prussian-blue)',
-        borderBottom: '1px solid var(--color-border)',
+        height: 'var(--topbar-height)',
+        backgroundColor: 'var(--bg-surface-1)',
+        borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'flex-end',
-        padding: '0 var(--space-6)',
+        padding: '0 var(--content-padding)',
         gap: 'var(--space-4)',
         position: 'fixed',
         top: 0,
-        left: 240,
+        left: 'var(--sidebar-width)',
         right: 0,
         zIndex: 99,
       }}
@@ -42,17 +42,17 @@ export function TopBar() {
           position: 'relative',
           background: 'none',
           border: 'none',
-          color: 'var(--color-grey)',
+          color: 'var(--text-secondary)',
           cursor: 'pointer',
           padding: 'var(--space-2)',
-          borderRadius: 'var(--radius-sm)',
-          transition: 'color 0.15s',
+          borderRadius: 'var(--radius-md)',
+          transition: 'color 150ms ease',
         }}
         onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.color = 'var(--color-orange)';
+          (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
         }}
         onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.color = 'var(--color-grey)';
+          (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
         }}
         aria-label="Notifications"
       >
@@ -68,8 +68,8 @@ export function TopBar() {
               right: 2,
               minWidth: 16,
               height: 16,
-              backgroundColor: 'var(--color-error)',
-              color: 'var(--color-white)',
+              backgroundColor: 'var(--color-danger)',
+              color: '#ffffff',
               fontSize: '10px',
               fontWeight: 700,
               display: 'flex',
@@ -88,8 +88,10 @@ export function TopBar() {
       {currentUser && (
         <span
           style={{
-            fontSize: '13px',
-            color: 'var(--color-grey)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text-secondary)',
+            letterSpacing: '0.02em',
           }}
         >
           {currentUser.email}
@@ -101,21 +103,23 @@ export function TopBar() {
         onClick={logout}
         style={{
           background: 'none',
-          border: '1px solid var(--color-border)',
-          color: 'var(--color-grey)',
+          border: '1px solid var(--border-default)',
+          color: 'var(--text-secondary)',
           cursor: 'pointer',
           padding: 'var(--space-1) var(--space-3)',
-          borderRadius: 'var(--radius-sm)',
-          fontSize: '13px',
-          transition: 'all 0.15s',
+          borderRadius: 'var(--radius-md)',
+          fontFamily: 'var(--font-body)',
+          fontSize: 'var(--text-sm)',
+          fontWeight: 500,
+          transition: 'all 150ms ease',
         }}
         onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-orange)';
-          (e.currentTarget as HTMLElement).style.color = 'var(--color-orange)';
+          (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-border)';
+          (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
         }}
         onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)';
-          (e.currentTarget as HTMLElement).style.color = 'var(--color-grey)';
+          (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-default)';
+          (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
         }}
       >
         Logout

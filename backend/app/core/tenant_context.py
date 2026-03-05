@@ -34,9 +34,11 @@ async def set_tenant_context(db: AsyncSession, tenant_id: UUID) -> None:
     """
     if tenant_id is None:
         raise ValueError("tenant_id must not be None")
+    # SET LOCAL does not support parameterized queries in asyncpg ($1 syntax).
+    # We validate tenant_id as a UUID (safe from injection) and interpolate directly.
+    safe_tenant_id = str(UUID(str(tenant_id)))  # re-validate as UUID
     await db.execute(
-        text("SET LOCAL app.current_tenant_id = :tenant_id"),
-        {"tenant_id": str(tenant_id)},
+        text(f"SET LOCAL app.current_tenant_id = '{safe_tenant_id}'")
     )
 
 

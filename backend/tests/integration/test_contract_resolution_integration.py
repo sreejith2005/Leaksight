@@ -158,12 +158,15 @@ class TestContractOverlap:
     @pytest.mark.asyncio
     async def test_overlap_returns_overlap_status(self):
         """Two versions covering the same date → OVERLAP."""
+        shared_contract_id = uuid4()
         cv1 = make_contract_version(
+            contract_id=shared_contract_id,
             valid_from=date(2024, 1, 1),
             valid_to=date(2025, 1, 1),
             version_number=1,
         )
         cv2 = make_contract_version(
+            contract_id=shared_contract_id,
             valid_from=date(2024, 6, 1),
             valid_to=date(2025, 6, 1),
             version_number=2,
@@ -227,7 +230,8 @@ class TestContractOverlap:
         assert result.confidence == 0.5
         assert result.amount == Decimal("0")
         assert "overlap" in result.explanation.lower() or "manual review" in result.explanation.lower()
-        assert result.evidence_jsonb.get("contract_overlap") is True
+        assert result.evidence_jsonb.get("overlap_info") is not None
+        assert result.evidence_jsonb["overlap_info"]["resolution"] == "MANUAL_REVIEW_REQUIRED"
 
 
 # ────────────────────────────────────────────────────────────────────────

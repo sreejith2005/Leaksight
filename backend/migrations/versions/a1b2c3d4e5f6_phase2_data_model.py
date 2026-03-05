@@ -107,6 +107,25 @@ def upgrade() -> None:
         name='comparison_status_enum', create_type=False
     )
 
+    # Enable uuid-ossp extension for uuid_generate_v4()
+    op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+    # Enable pg_trgm extension for gin_trgm_ops (fuzzy text search)
+    op.execute('CREATE EXTENSION IF NOT EXISTS "pg_trgm"')
+
+    # Create application roles if they don't exist (needed for RLS GRANTs)
+    op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_admin') THEN
+                CREATE ROLE app_admin;
+            END IF;
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_tenant_user') THEN
+                CREATE ROLE app_tenant_user;
+            END IF;
+        END
+        $$;
+    """)
+
     # Create all enum types
     op.execute("CREATE TYPE user_role_enum AS ENUM ('ADMIN', 'REVIEWER')")
     op.execute("CREATE TYPE doc_type_enum AS ENUM ('INVOICE', 'CONTRACT', 'PO', 'GRN')")

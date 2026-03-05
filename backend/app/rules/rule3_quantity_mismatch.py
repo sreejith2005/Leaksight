@@ -97,7 +97,7 @@ async def evaluate(
     po_stmt = select(PurchaseOrder).where(
         PurchaseOrder.vendor_id == invoice.vendor_id,
         PurchaseOrder.tenant_id == tenant_id,
-    )
+    ).order_by(PurchaseOrder.id.asc())
     po_result = await db.execute(po_stmt)
     vendor_pos = list(po_result.scalars().all())
 
@@ -119,7 +119,7 @@ async def evaluate(
             gli_stmt = select(GrnLineItem).where(
                 GrnLineItem.grn_id.in_(grn_ids),
                 GrnLineItem.tenant_id == tenant_id,
-            )
+            ).order_by(GrnLineItem.id.asc())
             gli_result = await db.execute(gli_stmt)
             grn_line_items = list(gli_result.scalars().all())
 
@@ -152,7 +152,7 @@ async def evaluate(
         pli_stmt = select(PoLineItem).where(
             PoLineItem.po_id.in_(po_ids),
             PoLineItem.tenant_id == tenant_id,
-        )
+        ).order_by(PoLineItem.id.asc())
         pli_result = await db.execute(pli_stmt)
         po_line_items = list(pli_result.scalars().all())
 

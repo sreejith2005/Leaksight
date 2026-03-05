@@ -30,14 +30,16 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
     >
       <div
         style={{
-          background: 'var(--color-prussian-blue)',
-          border: '1px solid var(--border-color)',
-          borderRadius: 'var(--border-radius)',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-default)',
+          borderRadius: 'var(--radius-xl)',
           padding: 'var(--space-6)',
-          minWidth: 400,
+          minWidth: 440,
           maxWidth: '90vw',
           maxHeight: '80vh',
           overflow: 'auto',
+          boxShadow: 'var(--shadow-lg)',
+          animation: 'modalIn 200ms ease-out',
         }}
       >
         <div
@@ -48,16 +50,18 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
             marginBottom: 'var(--space-6)',
           }}
         >
-          <h2 style={{ fontSize: '18px', fontWeight: 700 }}>{title}</h2>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xl)', fontWeight: 600, color: 'var(--text-primary)' }}>{title}</h2>
           <button
             onClick={onClose}
             style={{
               background: 'transparent',
               border: 'none',
-              color: 'var(--color-grey)',
+              color: 'var(--text-secondary)',
               fontSize: '20px',
               cursor: 'pointer',
               padding: 'var(--space-1)',
+              borderRadius: 'var(--radius-sm)',
+              transition: 'color 150ms ease',
             }}
           >
             ✕

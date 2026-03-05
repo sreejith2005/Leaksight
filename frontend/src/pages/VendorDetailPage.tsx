@@ -64,37 +64,41 @@ export default function VendorDetailPage() {
         style={{
           background: 'none',
           border: 'none',
-          color: 'var(--color-orange)',
+          color: 'var(--accent)',
           cursor: 'pointer',
-          fontSize: '13px',
-          marginBottom: 'var(--space-4)',
+          fontFamily: 'var(--font-body)',
+          fontSize: 'var(--text-xs)',
+          marginBottom: 'var(--space-6)',
           padding: 0,
+          transition: 'opacity 150ms ease',
         }}
+        onMouseEnter={(e) => { (e.target as HTMLElement).style.opacity = '0.8'; }}
+        onMouseLeave={(e) => { (e.target as HTMLElement).style.opacity = '1'; }}
       >
         ← Back to Vendors
       </button>
 
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-white)', marginBottom: 'var(--space-6)' }}>
+      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-3xl)', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 'var(--space-8)', letterSpacing: '-0.01em' }}>
         {vendor.normalized_name}
       </h1>
 
       {/* Overview */}
       <Card style={{ marginBottom: 'var(--space-6)' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-4)' }}>
+        <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-5)' }}>
           Overview
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
           <div>
-            <div style={{ fontSize: '11px', color: 'var(--color-muted)', textTransform: 'uppercase', marginBottom: 'var(--space-1)' }}>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 'var(--space-1)' }}>
               GST ID
             </div>
-            <div style={{ fontSize: '14px', color: 'var(--color-grey)' }}>{vendor.gst_id || '—'}</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>{vendor.gst_id || '—'}</div>
           </div>
           <div>
-            <div style={{ fontSize: '11px', color: 'var(--color-muted)', textTransform: 'uppercase', marginBottom: 'var(--space-1)' }}>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 'var(--space-1)' }}>
               Created
             </div>
-            <div style={{ fontSize: '14px', color: 'var(--color-grey)' }}>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
               {vendor.created_at ? new Date(vendor.created_at).toLocaleDateString() : '—'}
             </div>
           </div>
@@ -103,7 +107,7 @@ export default function VendorDetailPage() {
 
       {/* Raw names */}
       <Card style={{ marginBottom: 'var(--space-6)' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-3)' }}>
+        <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-4)' }}>
           Raw Name Variations
         </h3>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
@@ -116,14 +120,14 @@ export default function VendorDetailPage() {
       {/* Aliases */}
       <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)' }}>
+          <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Aliases ({vendor.aliases.length})
           </h3>
           <Button onClick={() => setShowAddModal(true)}>Add Alias</Button>
         </div>
 
         {vendor.aliases.length === 0 ? (
-          <p style={{ color: 'var(--color-muted)', fontSize: '14px' }}>No aliases defined yet.</p>
+          <p style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>No aliases defined yet.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
             {vendor.aliases.map((alias) => (
@@ -133,22 +137,22 @@ export default function VendorDetailPage() {
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  padding: 'var(--space-3)',
-                  backgroundColor: 'var(--color-black)',
-                  borderRadius: 'var(--radius-sm)',
+                  padding: 'var(--space-3) var(--space-4)',
+                  backgroundColor: 'var(--bg-base)',
+                  borderRadius: 'var(--radius-md)',
                   opacity: alias.is_active ? 1 : 0.5,
                 }}
               >
                 <div>
-                  <span style={{ color: 'var(--color-grey)', fontSize: '14px' }}>{alias.alias_name}</span>
+                  <span style={{ fontFamily: 'var(--font-body)', color: 'var(--text-primary)', fontSize: 'var(--text-sm)' }}>{alias.alias_name}</span>
                   <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--color-muted)' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
                       {alias.override_source}
                     </span>
                     {!alias.is_active && (
                       <Badge
-                        color="var(--color-error)"
-                        bgColor="rgba(239, 68, 68, 0.12)"
+                        color="var(--color-danger)"
+                        bgColor="var(--danger-dim)"
                       >
                         Inactive
                       </Badge>
@@ -172,7 +176,7 @@ export default function VendorDetailPage() {
 
       {/* Add alias modal */}
       <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Add Vendor Alias">
-        <p style={{ color: 'var(--color-grey)', fontSize: '14px', marginBottom: 'var(--space-4)' }}>
+        <p style={{ fontFamily: 'var(--font-body)', color: 'var(--text-primary)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>
           Enter a new alias name for this vendor.
         </p>
         <input
@@ -182,12 +186,13 @@ export default function VendorDetailPage() {
           placeholder="Alias name"
           style={{
             width: '100%',
-            backgroundColor: 'var(--color-black)',
-            color: 'var(--color-grey)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-sm)',
-            padding: 'var(--space-3)',
-            fontSize: '14px',
+            backgroundColor: 'var(--bg-base)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-3) var(--space-4)',
+            fontFamily: 'var(--font-body)',
+            fontSize: 'var(--text-sm)',
             outline: 'none',
           }}
         />

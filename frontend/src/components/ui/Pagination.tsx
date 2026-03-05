@@ -23,7 +23,7 @@ export function Pagination({ page, totalPages, onPageChange, totalRecords, pageS
       }}
     >
       {totalRecords !== undefined && (
-        <span style={{ color: 'var(--color-muted)', fontSize: '13px' }}>
+        <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', letterSpacing: '0.02em' }}>
           Showing {start}–{end} of {totalRecords} findings
         </span>
       )}
@@ -35,7 +35,7 @@ export function Pagination({ page, totalPages, onPageChange, totalRecords, pageS
         >
           ← Previous
         </button>
-        <span style={{ color: 'var(--color-grey)', fontSize: '13px', padding: '0 var(--space-2)' }}>
+        <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', padding: '0 var(--space-2)' }}>
           Page {page} of {totalPages}
         </span>
         <button
@@ -51,11 +51,14 @@ export function Pagination({ page, totalPages, onPageChange, totalRecords, pageS
 }
 
 const navBtnStyle: React.CSSProperties = {
-  background: 'transparent',
-  border: '1px solid var(--color-muted)',
-  color: 'var(--color-grey)',
+  background: 'var(--bg-surface-2)',
+  border: '1px solid var(--border-default)',
+  color: 'var(--text-secondary)',
   padding: 'var(--space-1) var(--space-3)',
-  borderRadius: 'var(--border-radius)',
+  borderRadius: 'var(--radius-md)',
   cursor: 'pointer',
-  fontSize: '13px',
+  fontFamily: 'var(--font-body)',
+  fontSize: 'var(--text-sm)',
+  fontWeight: 500,
+  transition: 'all 150ms ease',
 };

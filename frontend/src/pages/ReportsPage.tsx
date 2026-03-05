@@ -71,26 +71,39 @@ export default function ReportsPage() {
   }
 
   return (
-    <div>
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-white)', marginBottom: 'var(--space-6)' }}>
+    <div className="animate-fadeIn">
+      <h1
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 'var(--text-3xl)',
+          fontWeight: 700,
+          color: 'var(--text-primary)',
+          marginBottom: 'var(--space-2)',
+          letterSpacing: '-0.01em',
+        }}
+      >
         Reports
       </h1>
+      <p style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--space-8)' }}>
+        Executive summaries and downloadable evidence packs
+      </p>
 
       {/* Run selector */}
       <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', marginBottom: 'var(--space-6)' }}>
-        <label style={{ fontSize: '14px', color: 'var(--color-grey)' }}>Select Run:</label>
+        <label style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Select Run:</label>
         <select
           value={selectedRunId ?? ''}
           onChange={(e) => setSelectedRunId(e.target.value)}
           style={{
-            backgroundColor: 'var(--color-prussian-blue)',
-            color: 'var(--color-grey)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-sm)',
+            backgroundColor: 'var(--bg-surface-1)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-md)',
             padding: 'var(--space-2) var(--space-3)',
-            fontSize: '14px',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-xs)',
             outline: 'none',
-            minWidth: 260,
+            minWidth: 300,
           }}
         >
           {runsData.data.map((run) => (
@@ -141,7 +154,7 @@ function CFOSummaryView({ summary }: { summary: CFOSummaryResponse }) {
       {/* Status row */}
       <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', marginBottom: 'var(--space-6)' }}>
         <StatusBadge status={summary.run_status} />
-        <span style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
           Generated {new Date(summary.generated_at).toLocaleString()}
         </span>
       </div>
@@ -153,7 +166,7 @@ function CFOSummaryView({ summary }: { summary: CFOSummaryResponse }) {
             borderLeft: '4px solid var(--color-warning)',
           }}
         >
-          <span style={{ color: 'var(--color-warning)', fontSize: '14px' }}>
+          <span style={{ color: 'var(--color-warning)', fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)' }}>
             ⚠ {summary.partial_success_notes}
           </span>
         </Card>
@@ -169,26 +182,26 @@ function CFOSummaryView({ summary }: { summary: CFOSummaryResponse }) {
         }}
       >
         <Card highlight>
-          <div style={{ fontSize: '12px', color: 'var(--color-muted)', textTransform: 'uppercase', marginBottom: 'var(--space-2)' }}>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)' }}>
             Total Leakage (accepted findings only)
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-orange)' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)', fontWeight: 700, color: 'var(--accent)' }}>
             {formatCurrency(s.total_leakage, s.currency)}
           </div>
         </Card>
         <Card>
-          <div style={{ fontSize: '12px', color: 'var(--color-muted)', textTransform: 'uppercase', marginBottom: 'var(--space-2)' }}>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)' }}>
             Pending Review
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-white)' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)', fontWeight: 700, color: 'var(--text-primary)' }}>
             {s.pending_review_count}
           </div>
         </Card>
         <Card>
-          <div style={{ fontSize: '12px', color: 'var(--color-muted)', textTransform: 'uppercase', marginBottom: 'var(--space-2)' }}>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)' }}>
             Pending FX Rate
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-warning)' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)', fontWeight: 700, color: 'var(--color-warning)' }}>
             {s.pending_fx_rate_count}
           </div>
         </Card>
@@ -197,7 +210,7 @@ function CFOSummaryView({ summary }: { summary: CFOSummaryResponse }) {
       {/* Top vendors */}
       {s.top_vendors.length > 0 && (
         <Card style={{ marginBottom: 'var(--space-6)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-4)' }}>
+          <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-5)' }}>
             Top Vendors
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
@@ -208,15 +221,15 @@ function CFOSummaryView({ summary }: { summary: CFOSummaryResponse }) {
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  padding: 'var(--space-3)',
-                  backgroundColor: 'var(--color-black)',
-                  borderRadius: 'var(--radius-sm)',
+                  padding: 'var(--space-3) var(--space-4)',
+                  backgroundColor: 'var(--bg-base)',
+                  borderRadius: 'var(--radius-md)',
                 }}
               >
-                <span style={{ color: 'var(--color-grey)', fontSize: '14px' }}>{v.vendor_name}</span>
-                <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--color-muted)' }}>{v.record_count} findings</span>
-                  <span style={{ color: 'var(--color-orange)', fontWeight: 600, fontSize: '14px' }}>
+                <span style={{ fontFamily: 'var(--font-body)', color: 'var(--text-primary)', fontSize: 'var(--text-sm)' }}>{v.vendor_name}</span>
+                <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'center' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{v.record_count} findings</span>
+                  <span style={{ fontFamily: 'var(--font-display)', color: 'var(--accent)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                     {formatCurrency(v.leakage_amount, s.currency)}
                   </span>
                 </div>
@@ -229,27 +242,27 @@ function CFOSummaryView({ summary }: { summary: CFOSummaryResponse }) {
       {/* By Rule */}
       {Object.keys(s.by_rule).length > 0 && (
         <Card style={{ marginBottom: 'var(--space-6)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-4)' }}>
+          <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-5)' }}>
             Breakdown by Rule
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--space-3)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
             {Object.entries(s.by_rule).map(([rule, data]) => (
               <div
                 key={rule}
                 style={{
-                  padding: 'var(--space-4)',
-                  backgroundColor: 'var(--color-black)',
+                  padding: 'var(--space-5)',
+                  backgroundColor: 'var(--bg-base)',
                   borderRadius: 'var(--radius-md)',
-                  borderLeft: '3px solid var(--color-orange)',
+                  borderLeft: '3px solid var(--accent)',
                 }}
               >
-                <div style={{ fontSize: '12px', color: 'var(--color-muted)', textTransform: 'uppercase', marginBottom: 'var(--space-1)' }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 'var(--space-2)' }}>
                   {rule.replace(/_/g, ' ')}
                 </div>
-                <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--color-white)' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--text-primary)' }}>
                   {formatCurrency(data.amount, s.currency)}
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--color-muted)' }}>{data.count} findings</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{data.count} findings</div>
               </div>
             ))}
           </div>
@@ -258,34 +271,34 @@ function CFOSummaryView({ summary }: { summary: CFOSummaryResponse }) {
 
       {/* Confidence bands */}
       <Card>
-        <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-4)' }}>
+        <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-5)' }}>
           Confidence Bands
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-3)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-4)' }}>
           {(['high', 'medium', 'low'] as const).map((band) => {
             const colors = {
               high: 'var(--color-success)',
               medium: 'var(--color-warning)',
-              low: 'var(--color-error)',
+              low: 'var(--color-danger)',
             };
             return (
               <div
                 key={band}
                 style={{
-                  padding: 'var(--space-4)',
-                  backgroundColor: 'var(--color-black)',
+                  padding: 'var(--space-5)',
+                  backgroundColor: 'var(--bg-base)',
                   borderRadius: 'var(--radius-md)',
                   borderTop: `3px solid ${colors[band]}`,
                   textAlign: 'center',
                 }}
               >
-                <div style={{ fontSize: '11px', color: 'var(--color-muted)', textTransform: 'uppercase', marginBottom: 'var(--space-2)' }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 'var(--space-2)' }}>
                   {band}
                 </div>
-                <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-white)' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--text-primary)' }}>
                   {s.confidence_bands[band].count}
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
                   {formatCurrency(s.confidence_bands[band].amount, s.currency)}
                 </div>
               </div>

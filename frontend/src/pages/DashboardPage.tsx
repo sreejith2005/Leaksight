@@ -47,7 +47,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-16)' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '120px 0' }}>
         <LoadingSpinner size={40} />
       </div>
     );
@@ -65,18 +65,35 @@ export default function DashboardPage() {
   }
 
   return (
-    <div>
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-white)', marginBottom: 'var(--space-6)' }}>
+    <div className="animate-fadeIn">
+      <h1
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 'var(--text-3xl)',
+          fontWeight: 700,
+          color: 'var(--text-primary)',
+          marginBottom: 'var(--space-2)',
+          letterSpacing: '-0.01em',
+        }}
+      >
         Dashboard
       </h1>
+      <p style={{
+        fontFamily: 'var(--font-body)',
+        fontSize: 'var(--text-sm)',
+        color: 'var(--text-muted)',
+        marginBottom: 'var(--space-8)',
+      }}>
+        Latest analysis overview
+      </p>
 
       {/* KPI cards row */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
           gap: 'var(--space-4)',
-          marginBottom: 'var(--space-6)',
+          marginBottom: 'var(--space-8)',
         }}
       >
         <KPICard
@@ -101,27 +118,61 @@ export default function DashboardPage() {
       {/* By type breakdown */}
       {summaryData && Object.keys(summaryData.by_type).length > 0 && (
         <Card style={{ marginBottom: 'var(--space-6)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-4)' }}>
+          <h3
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              marginBottom: 'var(--space-5)',
+            }}
+          >
             Leakage by Type (accepted findings only)
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--space-3)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
             {Object.entries(summaryData.by_type).map(([type, data]) => (
               <div
                 key={type}
                 style={{
-                  padding: 'var(--space-4)',
-                  backgroundColor: 'var(--color-black)',
+                  padding: 'var(--space-5)',
+                  backgroundColor: 'var(--bg-base)',
                   borderRadius: 'var(--radius-md)',
-                  borderLeft: '3px solid var(--color-orange)',
+                  borderLeft: '3px solid var(--accent)',
                 }}
               >
-                <div style={{ fontSize: '12px', color: 'var(--color-muted)', textTransform: 'uppercase', marginBottom: 'var(--space-1)' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-body)',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 600,
+                    color: 'var(--text-muted)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    marginBottom: 'var(--space-2)',
+                  }}
+                >
                   {type.replace(/_/g, ' ')}
                 </div>
-                <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--color-white)' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 'var(--text-xl)',
+                    fontWeight: 700,
+                    color: 'var(--text-primary)',
+                  }}
+                >
                   {formatCurrency(data.total_amount, summaryData.currency)}
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: 'var(--space-1)' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--text-muted)',
+                    marginTop: 'var(--space-1)',
+                  }}
+                >
                   {data.count} finding{data.count !== 1 ? 's' : ''}
                 </div>
               </div>
@@ -133,7 +184,17 @@ export default function DashboardPage() {
       {/* Top vendors */}
       {summaryData && summaryData.by_vendor.length > 0 && (
         <Card style={{ marginBottom: 'var(--space-6)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-4)' }}>
+          <h3
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              marginBottom: 'var(--space-5)',
+            }}
+          >
             Top Vendors by Leakage (accepted findings only)
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
@@ -144,25 +205,28 @@ export default function DashboardPage() {
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  padding: 'var(--space-3)',
-                  backgroundColor: 'var(--color-black)',
-                  borderRadius: 'var(--radius-sm)',
+                  padding: 'var(--space-3) var(--space-4)',
+                  backgroundColor: 'var(--bg-base)',
+                  borderRadius: 'var(--radius-md)',
                   cursor: 'pointer',
+                  transition: 'background-color 150ms ease',
                 }}
                 onClick={() => navigate(`/vendors/${vendor.vendor_id}`)}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(252, 163, 17, 0.06)';
+                  (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--accent-dim)';
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-black)';
+                  (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--bg-base)';
                 }}
               >
-                <span style={{ color: 'var(--color-grey)', fontSize: '14px' }}>{vendor.vendor_name}</span>
-                <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
-                  <span style={{ color: 'var(--color-muted)', fontSize: '12px' }}>
+                <span style={{ fontFamily: 'var(--font-body)', color: 'var(--text-primary)', fontSize: 'var(--text-sm)' }}>
+                  {vendor.vendor_name}
+                </span>
+                <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'center' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
                     {vendor.record_count} finding{vendor.record_count !== 1 ? 's' : ''}
                   </span>
-                  <span style={{ color: 'var(--color-orange)', fontWeight: 600, fontSize: '14px' }}>
+                  <span style={{ fontFamily: 'var(--font-display)', color: 'var(--accent)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                     {formatCurrency(vendor.total_amount, summaryData.currency)}
                   </span>
                 </div>
@@ -174,8 +238,17 @@ export default function DashboardPage() {
 
       {/* Recent runs */}
       <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
+          <h3
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+            }}
+          >
             Recent Runs
           </h3>
           <button
@@ -183,10 +256,15 @@ export default function DashboardPage() {
             style={{
               background: 'none',
               border: 'none',
-              color: 'var(--color-orange)',
+              fontFamily: 'var(--font-body)',
+              color: 'var(--accent)',
               cursor: 'pointer',
-              fontSize: '13px',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 500,
+              transition: 'opacity 150ms ease',
             }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.opacity = '0.8'; }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.opacity = '1'; }}
           >
             View all →
           </button>
@@ -199,19 +277,18 @@ export default function DashboardPage() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: 'var(--space-3)',
-                backgroundColor: 'var(--color-black)',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '14px',
+                padding: 'var(--space-3) var(--space-4)',
+                backgroundColor: 'var(--bg-base)',
+                borderRadius: 'var(--radius-md)',
               }}
             >
               <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
                 <StatusBadge status={run.status} />
-                <span style={{ color: 'var(--color-grey)', fontFamily: 'monospace', fontSize: '12px' }}>
+                <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
                   {run.run_id.slice(0, 8)}
                 </span>
               </div>
-              <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center', fontSize: '12px', color: 'var(--color-muted)' }}>
+              <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'center', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
                 <span>{run.total_documents} docs</span>
                 <span>{run.leakage_record_count} findings</span>
                 <span>{run.created_at ? new Date(run.created_at).toLocaleDateString() : '—'}</span>
@@ -237,10 +314,28 @@ function KPICard({
 }) {
   return (
     <Card highlight={highlight}>
-      <div style={{ fontSize: '12px', color: 'var(--color-muted)', textTransform: 'uppercase', marginBottom: 'var(--space-2)' }}>
+      <div
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontSize: 'var(--text-xs)',
+          fontWeight: 600,
+          color: 'var(--text-secondary)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          marginBottom: 'var(--space-3)',
+        }}
+      >
         {label}
       </div>
-      <div style={{ fontSize: '24px', fontWeight: 700, color: highlight ? 'var(--color-orange)' : 'var(--color-white)' }}>
+      <div
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 'var(--text-2xl)',
+          fontWeight: 700,
+          color: highlight ? 'var(--accent)' : 'var(--text-primary)',
+          letterSpacing: '-0.01em',
+        }}
+      >
         {value}
       </div>
     </Card>

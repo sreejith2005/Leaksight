@@ -43,12 +43,10 @@ async def test_set_tenant_context_executes_set_local(
 
     mock_db.execute.assert_called_once()
     call_args = mock_db.execute.call_args
-    # First positional arg is the text() object
+    # First positional arg is the text() object (tenant_id is interpolated directly)
     sql_text = str(call_args[0][0])
     assert "SET LOCAL app.current_tenant_id" in sql_text
-    # Second positional arg is the params dict
-    params = call_args[0][1]
-    assert params["tenant_id"] == str(tenant_id)
+    assert str(tenant_id) in sql_text
 
 
 @pytest.mark.asyncio
@@ -118,7 +116,8 @@ async def test_set_and_get_tenant_context_roundtrip(
     async def mock_execute(stmt, params=None):
         sql = str(stmt)
         if "SET LOCAL" in sql:
-            stored_value["tenant_id"] = params["tenant_id"]
+            # tenant_id is interpolated directly in the SQL string
+            stored_value["tenant_id"] = str(tenant_id)
             return None
         elif "current_setting" in sql:
             result = MagicMock()

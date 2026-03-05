@@ -90,7 +90,7 @@ async def create_tenant(
                         manual_review_threshold, base_currency
                     )
                     VALUES (
-                        :tenant_id, :abbrev_dict::jsonb,
+                        :tenant_id, CAST(:abbrev_dict AS jsonb),
                         :fuzzy, :dup_window,
                         :review_threshold, :base_currency
                     )

@@ -42,7 +42,7 @@ const columns: ColumnDef<LeakageRecord, unknown>[] = [
     accessorKey: 'vendor_name',
     header: 'Vendor',
     cell: ({ getValue }) => (
-      <span style={{ color: 'var(--color-white)', fontWeight: 500 }}>
+      <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
         {getValue() as string}
       </span>
     ),
@@ -51,7 +51,7 @@ const columns: ColumnDef<LeakageRecord, unknown>[] = [
     accessorKey: 'leakage_type',
     header: 'Type',
     cell: ({ getValue }) => (
-      <span style={{ fontSize: '12px' }}>
+      <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-body)', textTransform: 'uppercase' as const, letterSpacing: '0.04em', color: 'var(--text-secondary)' }}>
         {(getValue() as string).replace(/_/g, ' ')}
       </span>
     ),
@@ -60,7 +60,7 @@ const columns: ColumnDef<LeakageRecord, unknown>[] = [
     accessorKey: 'amount',
     header: 'Amount',
     cell: ({ row }) => (
-      <span style={{ fontWeight: 600, color: 'var(--color-orange)' }}>
+      <span style={{ fontWeight: 600, color: 'var(--accent)', fontFamily: 'var(--font-display)' }}>
         {formatCurrency(row.original.amount, row.original.currency)}
       </span>
     ),
@@ -68,7 +68,11 @@ const columns: ColumnDef<LeakageRecord, unknown>[] = [
   {
     accessorKey: 'confidence',
     header: 'Confidence',
-    cell: ({ getValue }) => `${((getValue() as number) * 100).toFixed(0)}%`,
+    cell: ({ getValue }) => (
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
+        {((getValue() as number) * 100).toFixed(0)}%
+      </span>
+    ),
   },
   {
     accessorKey: 'invoice_no',
@@ -117,13 +121,25 @@ export default function LeakageReviewPage() {
   );
 
   return (
-    <div>
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-white)', marginBottom: 'var(--space-6)' }}>
+    <div className="animate-fadeIn">
+      <h1
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 'var(--text-3xl)',
+          fontWeight: 700,
+          color: 'var(--text-primary)',
+          marginBottom: 'var(--space-2)',
+          letterSpacing: '-0.01em',
+        }}
+      >
         Leakage Review
       </h1>
+      <p style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--space-6)' }}>
+        Review and action flagged findings
+      </p>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-5)', flexWrap: 'wrap' }}>
         <FilterSelect
           value={statusFilter}
           onChange={(v) => { setStatusFilter(v); setPage(1); }}
@@ -191,14 +207,16 @@ function FilterSelect({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       style={{
-        backgroundColor: 'var(--color-prussian-blue)',
-        color: 'var(--color-grey)',
-        border: '1px solid var(--color-border)',
-        borderRadius: 'var(--radius-sm)',
+        backgroundColor: 'var(--bg-surface-1)',
+        color: 'var(--text-primary)',
+        border: '1px solid var(--border-default)',
+        borderRadius: 'var(--radius-md)',
         padding: 'var(--space-2) var(--space-3)',
-        fontSize: '13px',
+        fontFamily: 'var(--font-body)',
+        fontSize: 'var(--text-xs)',
         outline: 'none',
-        minWidth: 140,
+        minWidth: 150,
+        transition: 'border-color 150ms ease',
       }}
     >
       {options.map((opt) => (

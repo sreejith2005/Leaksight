@@ -222,6 +222,7 @@ class ParseResult:
                 }
                 for ff in self.failure_flags
             ],
+            "raw_extracted_data": self.raw_extracted_data or {},
         }
 
 

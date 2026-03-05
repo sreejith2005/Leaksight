@@ -48,10 +48,22 @@ export default function AdminPage() {
   }
 
   return (
-    <div>
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-white)', marginBottom: 'var(--space-6)' }}>
+    <div className="animate-fadeIn">
+      <h1
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 'var(--text-3xl)',
+          fontWeight: 700,
+          color: 'var(--text-primary)',
+          marginBottom: 'var(--space-2)',
+          letterSpacing: '-0.01em',
+        }}
+      >
         Administration
       </h1>
+      <p style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--space-8)' }}>
+        FX rates, matching thresholds, and tenant configuration
+      </p>
       <FxRatesSection />
       <div style={{ marginTop: 'var(--space-8)' }}>
         <TenantSettingsSection />
@@ -110,7 +122,7 @@ function FxRatesSection() {
 
   return (
     <Card>
-      <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-4)' }}>
+      <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-5)' }}>
         FX Rates
       </h3>
 
@@ -205,7 +217,7 @@ function TenantSettingsSection() {
 
   return (
     <Card>
-      <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-4)' }}>
+      <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-5)' }}>
         Tenant Settings
       </h3>
 
@@ -247,18 +259,20 @@ function TenantSettingsSection() {
       {/* Abbreviation dictionary (read-only display) */}
       {settings?.abbreviation_dictionary && Object.keys(settings.abbreviation_dictionary).length > 0 && (
         <div style={{ marginBottom: 'var(--space-4)' }}>
-          <div style={{ fontSize: '11px', color: 'var(--color-muted)', textTransform: 'uppercase', marginBottom: 'var(--space-2)' }}>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 'var(--space-2)' }}>
             Abbreviation Dictionary
           </div>
           <pre
             style={{
-              backgroundColor: 'var(--color-black)',
-              padding: 'var(--space-3)',
-              borderRadius: 'var(--radius-sm)',
-              color: 'var(--color-grey)',
-              fontSize: '12px',
+              backgroundColor: 'var(--bg-base)',
+              padding: 'var(--space-4)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--text-primary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--text-xs)',
               overflow: 'auto',
               maxHeight: 200,
+              border: '1px solid var(--border-subtle)',
             }}
           >
             {JSON.stringify(settings.abbreviation_dictionary, null, 2)}
@@ -274,7 +288,7 @@ function TenantSettingsSection() {
       </Button>
 
       {settings?.updated_at && (
-        <p style={{ fontSize: '11px', color: 'var(--color-muted)', marginTop: 'var(--space-3)' }}>
+        <p style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 'var(--space-3)' }}>
           Last updated: {new Date(settings.updated_at).toLocaleString()}
         </p>
       )}
@@ -301,7 +315,7 @@ function InputField({
 }) {
   return (
     <div>
-      <div style={{ fontSize: '11px', color: 'var(--color-muted)', textTransform: 'uppercase', marginBottom: 'var(--space-1)' }}>
+      <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 'var(--space-2)' }}>
         {label}
       </div>
       <input
@@ -312,13 +326,15 @@ function InputField({
         maxLength={maxLength}
         style={{
           width: '100%',
-          backgroundColor: 'var(--color-black)',
-          color: 'var(--color-grey)',
-          border: '1px solid var(--color-border)',
-          borderRadius: 'var(--radius-sm)',
+          backgroundColor: 'var(--bg-base)',
+          color: 'var(--text-primary)',
+          border: '1px solid var(--border-default)',
+          borderRadius: 'var(--radius-md)',
           padding: 'var(--space-2) var(--space-3)',
-          fontSize: '14px',
+          fontFamily: 'var(--font-body)',
+          fontSize: 'var(--text-sm)',
           outline: 'none',
+          transition: 'border-color 200ms ease',
         }}
       />
     </div>

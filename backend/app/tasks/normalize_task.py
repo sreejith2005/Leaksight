@@ -19,11 +19,13 @@ trigger analysis after all documents are uploaded and normalized.
 """
 
 import asyncio
+import traceback
 from uuid import UUID
 
 from sqlalchemy import select, update
 
 from backend.app.core.celery_app import celery_app
+from backend.app.core.celery_async import run_async as _run_async
 from backend.app.core.database import async_session_factory
 from backend.app.core.logging import get_logger
 from backend.app.core.tenant_context import set_tenant_context
@@ -34,15 +36,6 @@ from backend.app.services.normalization_service import (
 )
 
 logger = get_logger(__name__)
-
-
-def _run_async(coro):
-    """Run an async coroutine from a sync Celery task context."""
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 def _reconstruct_parse_result(raw_parse: RawParse) -> ParseResult:
@@ -117,7 +110,7 @@ def _reconstruct_parse_result(raw_parse: RawParse) -> ParseResult:
         header=header,
         line_items=line_items,
         failure_flags=failure_flags,
-        raw_extracted_data=data.get("raw_extracted_data"),
+        raw_extracted_data=data.get("raw_extracted_data") or {},
     )
 
 
@@ -234,6 +227,7 @@ async def _normalize_document_async(raw_parse_id: UUID, tenant_id: UUID) -> dict
                 raw_parse_id=str(raw_parse_id),
                 tenant_id=str(tenant_id),
                 error_type=type(exc).__name__,
+                traceback=traceback.format_exc(),
             )
 
             return {

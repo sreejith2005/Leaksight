@@ -222,9 +222,7 @@ class TestSendEmailSmtp:
     def test_successful_send(self, mock_smtp_class, mock_get_settings, mock_settings):
         """Scenario 4: successful SMTP send."""
         mock_get_settings.return_value = mock_settings
-        mock_server = MagicMock()
-        mock_smtp_class.return_value.__enter__ = MagicMock(return_value=mock_server)
-        mock_smtp_class.return_value.__exit__ = MagicMock(return_value=False)
+        mock_server = mock_smtp_class.return_value
 
         result = send_email_smtp("user@test.com", "Test", "Body text")
         assert result is True
@@ -239,10 +237,8 @@ class TestSendEmailSmtp:
     def test_smtp_exception_returns_false(self, mock_smtp_class, mock_get_settings, mock_settings):
         """Scenario 5: SMTP exception → returns False, never propagates."""
         mock_get_settings.return_value = mock_settings
-        mock_server = MagicMock()
+        mock_server = mock_smtp_class.return_value
         mock_server.starttls.side_effect = smtplib.SMTPException("Auth failed")
-        mock_smtp_class.return_value.__enter__ = MagicMock(return_value=mock_server)
-        mock_smtp_class.return_value.__exit__ = MagicMock(return_value=False)
 
         result = send_email_smtp("user@test.com", "Test", "Body")
         assert result is False

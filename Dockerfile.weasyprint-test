@@ -1,0 +1,20 @@
+# Minimal Dockerfile to test WeasyPrint PDF rendering
+# Only installs WeasyPrint + Jinja2 system deps — no full backend
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libffi8 \
+    shared-mime-info \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir weasyprint jinja2
+
+WORKDIR /app
+COPY backend/app/reporting/templates/ /app/templates/
+COPY _test_weasyprint_docker.py /app/test.py
+
+CMD ["python", "test.py"]

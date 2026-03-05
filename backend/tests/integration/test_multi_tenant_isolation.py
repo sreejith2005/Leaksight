@@ -66,13 +66,11 @@ class TestTenantContextSetLocal:
 
         db.execute.assert_called_once()
         call_args = db.execute.call_args
-        # First arg is the SQL text
+        # First arg is the SQL text (tenant_id is interpolated directly)
         sql_text = str(call_args[0][0])
         assert "SET LOCAL" in sql_text
         assert "app.current_tenant_id" in sql_text
-        # Second arg is the params dict
-        params = call_args[0][1]
-        assert params["tenant_id"] == str(TENANT_A_ID)
+        assert str(TENANT_A_ID) in sql_text
 
     @pytest.mark.asyncio
     async def test_set_tenant_context_none_raises_value_error(self):

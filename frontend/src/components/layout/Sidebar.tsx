@@ -91,10 +91,10 @@ export function Sidebar() {
   return (
     <aside
       style={{
-        width: 240,
+        width: 'var(--sidebar-width)',
         minHeight: '100vh',
-        backgroundColor: 'var(--color-prussian-blue)',
-        borderRight: '1px solid var(--color-border)',
+        backgroundColor: 'var(--bg-surface-1)',
+        borderRight: '1px solid var(--border-subtle)',
         display: 'flex',
         flexDirection: 'column',
         position: 'fixed',
@@ -107,20 +107,30 @@ export function Sidebar() {
       {/* Logo */}
       <div
         style={{
-          padding: 'var(--space-6)',
-          borderBottom: '1px solid var(--color-border)',
+          padding: 'var(--space-6) var(--space-6) var(--space-5)',
+          borderBottom: '1px solid var(--border-subtle)',
         }}
       >
         <span
           style={{
-            fontSize: '20px',
+            fontFamily: 'var(--font-display)',
+            fontSize: 'var(--text-xl)',
             fontWeight: 700,
-            color: 'var(--color-orange)',
-            letterSpacing: '-0.02em',
+            color: 'var(--accent)',
+            letterSpacing: '0.04em',
+            fontStyle: 'italic',
           }}
         >
           LeakSight
         </span>
+        <div
+          style={{
+            marginTop: '6px',
+            height: '1px',
+            background: 'linear-gradient(90deg, var(--accent) 0%, transparent 100%)',
+            opacity: 0.3,
+          }}
+        />
       </div>
 
       {/* Navigation */}
@@ -140,23 +150,25 @@ export function Sidebar() {
                 alignItems: 'center',
                 gap: 'var(--space-3)',
                 padding: 'var(--space-3) var(--space-6)',
-                color: isActive ? 'var(--color-orange)' : 'var(--color-grey)',
+                color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
                 textDecoration: 'none',
-                fontSize: '14px',
-                fontWeight: isActive ? 600 : 400,
-                borderLeft: isActive ? '3px solid var(--color-orange)' : '3px solid transparent',
-                backgroundColor: isActive ? 'rgba(252, 163, 17, 0.06)' : 'transparent',
-                transition: 'all 0.15s',
+                fontFamily: 'var(--font-body)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: isActive ? 600 : 500,
+                letterSpacing: '0.01em',
+                borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent',
+                backgroundColor: isActive ? 'var(--accent-dim)' : 'transparent',
+                transition: 'all 150ms ease',
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.color = 'var(--color-white)';
-                  (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.03)';
+                  (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)';
+                  (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(139,143,163,0.04)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.color = 'var(--color-grey)';
+                  (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
                   (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
                 }
               }}
@@ -172,9 +184,11 @@ export function Sidebar() {
       <div
         style={{
           padding: 'var(--space-4) var(--space-6)',
-          borderTop: '1px solid var(--color-border)',
-          fontSize: '11px',
-          color: 'var(--color-muted)',
+          borderTop: '1px solid var(--border-subtle)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--text-xs)',
+          color: 'var(--text-muted)',
+          letterSpacing: '0.02em',
         }}
       >
         LeakSight v1.0

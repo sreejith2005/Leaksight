@@ -75,44 +75,48 @@ export default function LeakageDetailPage() {
   const canReview = record.status === 'PENDING';
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto' }}>
+    <div className="animate-fadeIn" style={{ maxWidth: 800, margin: '0 auto' }}>
       {/* Back button */}
       <button
         onClick={() => navigate('/leakage')}
         style={{
           background: 'none',
           border: 'none',
-          color: 'var(--color-orange)',
+          color: 'var(--accent)',
           cursor: 'pointer',
-          fontSize: '13px',
-          marginBottom: 'var(--space-4)',
+          fontFamily: 'var(--font-body)',
+          fontSize: 'var(--text-xs)',
+          marginBottom: 'var(--space-6)',
           padding: 0,
+          transition: 'opacity 150ms ease',
         }}
+        onMouseEnter={(e) => { (e.target as HTMLElement).style.opacity = '0.8'; }}
+        onMouseLeave={(e) => { (e.target as HTMLElement).style.opacity = '1'; }}
       >
         ← Back to Leakage Review
       </button>
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-6)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-8)' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-white)', marginBottom: 'var(--space-2)' }}>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-3xl)', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 'var(--space-3)', letterSpacing: '-0.01em' }}>
             {record.vendor_name}
           </h1>
           <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
             <StatusBadge status={record.status} />
-            <span style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               {record.leakage_type.replace(/_/g, ' ')}
             </span>
           </div>
         </div>
-        <div style={{ fontSize: '28px', fontWeight: 700, color: 'var(--color-orange)' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-3xl)', fontWeight: 700, color: 'var(--accent)' }}>
           {formatCurrency(record.amount, record.currency)}
         </div>
       </div>
 
       {/* Detail fields */}
       <Card style={{ marginBottom: 'var(--space-6)' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-4)' }}>
+        <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-5)' }}>
           Finding Details
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
@@ -127,10 +131,10 @@ export default function LeakageDetailPage() {
 
       {/* Explanation */}
       <Card style={{ marginBottom: 'var(--space-6)' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-3)' }}>
+        <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-4)' }}>
           Explanation
         </h3>
-        <p style={{ color: 'var(--color-grey)', fontSize: '14px', lineHeight: 1.7 }}>
+        <p style={{ fontFamily: 'var(--font-body)', color: 'var(--text-primary)', fontSize: 'var(--text-sm)', lineHeight: 1.7 }}>
           {record.explanation}
         </p>
       </Card>
@@ -138,18 +142,21 @@ export default function LeakageDetailPage() {
       {/* Evidence */}
       {record.evidence && Object.keys(record.evidence).length > 0 && (
         <Card style={{ marginBottom: 'var(--space-6)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-3)' }}>
+          <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-4)' }}>
             Evidence
           </h3>
           <pre
             style={{
-              backgroundColor: 'var(--color-black)',
-              padding: 'var(--space-4)',
-              borderRadius: 'var(--radius-sm)',
-              color: 'var(--color-grey)',
-              fontSize: '12px',
+              backgroundColor: 'var(--bg-base)',
+              padding: 'var(--space-5)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--text-primary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--text-xs)',
               overflow: 'auto',
               maxHeight: 300,
+              border: '1px solid var(--border-subtle)',
+              lineHeight: 1.6,
             }}
           >
             {JSON.stringify(record.evidence, null, 2)}
@@ -160,7 +167,7 @@ export default function LeakageDetailPage() {
       {/* Review history */}
       {record.reviewed_by && (
         <Card style={{ marginBottom: 'var(--space-6)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-white)', marginBottom: 'var(--space-3)' }}>
+          <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-4)' }}>
             Review
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
@@ -220,7 +227,7 @@ export default function LeakageDetailPage() {
         onClose={() => setShowRejectModal(false)}
         title="Reject Finding"
       >
-        <p style={{ color: 'var(--color-grey)', fontSize: '14px', marginBottom: 'var(--space-4)' }}>
+        <p style={{ fontFamily: 'var(--font-body)', color: 'var(--text-primary)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>
           Please provide a reason for rejecting this finding. This is required.
         </p>
         <textarea
@@ -230,15 +237,16 @@ export default function LeakageDetailPage() {
           rows={4}
           style={{
             width: '100%',
-            backgroundColor: 'var(--color-black)',
-            color: 'var(--color-grey)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-sm)',
-            padding: 'var(--space-3)',
-            fontSize: '14px',
+            backgroundColor: 'var(--bg-base)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-3) var(--space-4)',
+            fontFamily: 'var(--font-body)',
+            fontSize: 'var(--text-sm)',
             resize: 'vertical',
             outline: 'none',
-            fontFamily: 'inherit',
+            transition: 'border-color 200ms ease',
           }}
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
@@ -262,10 +270,10 @@ export default function LeakageDetailPage() {
 function DetailField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={{ fontSize: '11px', color: 'var(--color-muted)', textTransform: 'uppercase', marginBottom: 'var(--space-1)' }}>
+      <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 'var(--space-1)' }}>
         {label}
       </div>
-      <div style={{ fontSize: '14px', color: 'var(--color-grey)' }}>{value}</div>
+      <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>{value}</div>
     </div>
   );
 }

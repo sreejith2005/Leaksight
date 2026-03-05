@@ -9,32 +9,33 @@ interface StatusBadgeProps {
 }
 
 const STATUS_CONFIG: Record<string, { bg: string; color: string; label: string }> = {
-  COMPLETE: { bg: '#22c55e', color: '#000000', label: 'Complete' },
-  ACCEPTED: { bg: '#22c55e', color: '#000000', label: 'Accepted' },
-  PARTIAL_SUCCESS: { bg: '#fca311', color: '#000000', label: 'Partial Success' },
-  PENDING_FX_RATE: { bg: '#fca311', color: '#000000', label: 'Pending FX Rate' },
-  FAILED: { bg: '#ef4444', color: '#ffffff', label: 'Failed' },
-  PENDING: { bg: '#e5e5e5', color: '#000000', label: 'Pending' },
-  REJECTED: { bg: 'rgba(239,68,68,0.2)', color: '#ef4444', label: 'Rejected' },
-  QUEUED: { bg: '#14213d', color: '#e5e5e5', label: 'Queued' },
-  PROCESSING: { bg: '#14213d', color: '#e5e5e5', label: 'Processing' },
+  COMPLETE: { bg: 'var(--color-success-dim)', color: 'var(--color-success)', label: 'Complete' },
+  ACCEPTED: { bg: 'var(--color-success-dim)', color: 'var(--color-success)', label: 'Accepted' },
+  PARTIAL_SUCCESS: { bg: 'var(--color-warning-dim)', color: 'var(--color-warning)', label: 'Partial Success' },
+  PENDING_FX_RATE: { bg: 'var(--color-warning-dim)', color: 'var(--color-warning)', label: 'Pending FX Rate' },
+  FAILED: { bg: 'var(--color-danger-dim)', color: 'var(--color-danger)', label: 'Failed' },
+  PENDING: { bg: 'var(--bg-surface-3)', color: 'var(--text-secondary)', label: 'Pending Review' },
+  REJECTED: { bg: 'var(--color-danger-dim)', color: 'var(--color-danger)', label: 'Rejected' },
+  QUEUED: { bg: 'var(--bg-surface-2)', color: 'var(--text-secondary)', label: 'Queued' },
+  PROCESSING: { bg: 'var(--color-info-dim)', color: 'var(--color-info)', label: 'Processing' },
 };
 
 export function StatusBadge({ status, style }: StatusBadgeProps) {
-  const config = STATUS_CONFIG[status] || { bg: '#e5e5e5', color: '#000000', label: status };
+  const config = STATUS_CONFIG[status] || { bg: 'var(--bg-surface-2)', color: 'var(--text-secondary)', label: status };
 
   return (
     <span
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 'var(--space-1)',
-        padding: '2px var(--space-2)',
-        borderRadius: 'var(--border-radius)',
-        fontSize: '11px',
-        fontWeight: 700,
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
+        gap: '5px',
+        padding: '3px 10px',
+        borderRadius: 'var(--radius-full)',
+        fontFamily: 'var(--font-body)',
+        fontSize: 'var(--text-xs)',
+        fontWeight: 600,
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.04em',
         background: config.bg,
         color: config.color,
         whiteSpace: 'nowrap',
@@ -51,10 +52,10 @@ export function StatusBadge({ status, style }: StatusBadgeProps) {
       {status === 'PROCESSING' && (
         <span
           style={{
-            width: 8,
-            height: 8,
+            width: 7,
+            height: 7,
             borderRadius: '50%',
-            background: 'var(--color-orange)',
+            background: 'var(--color-info)',
             animation: 'pulse 1.5s ease-in-out infinite',
           }}
         />

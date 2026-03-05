@@ -18,7 +18,7 @@ from uuid import UUID
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.models.invoices import Invoice
+from backend.app.models.invoices import Invoice, InvoiceLineItem
 from backend.app.models.tenant import TenantSettings
 from backend.app.rules.rule1_price_mismatch import RuleResult
 
@@ -54,6 +54,7 @@ async def evaluate(
             Invoice.vendor_id == invoice.vendor_id,
             Invoice.id != invoice.id,
         )
+        .order_by(Invoice.id.asc())
     )
     exact_result = await db.execute(exact_stmt)
     exact_dupes = list(exact_result.scalars().all())
@@ -114,12 +115,43 @@ async def evaluate(
             Invoice.total_amount == invoice.total_amount,
             Invoice.invoice_date >= date_start,
             Invoice.invoice_date <= date_end,
-            Invoice.id != invoice.id,
+            # Using < instead of != prevents counting each duplicate pair twice.
+            # (A,B) and (B,A) would both match with !=. With <, only the pair where
+            # A.id < B.id matches, ensuring each duplicate pair produces exactly one record.
+            Invoice.id < invoice.id,
             Invoice.invoice_no != invoice.invoice_no,
         )
+        .order_by(Invoice.id.asc())
     )
     near_result = await db.execute(near_stmt)
     near_dupes = list(near_result.scalars().all())
+
+    # ── Step 2b: Filter near-duplicates by matching item descriptions ──
+    # Only consider a near-duplicate valid if at least one line item
+    # description matches between the two invoices. This prevents
+    # false positives from same-vendor, same-amount invoices for
+    # completely different items.
+    if near_dupes:
+        # Load line items for the current invoice
+        src_li_stmt = select(InvoiceLineItem.item_desc).where(
+            InvoiceLineItem.invoice_id == invoice.id,
+        )
+        src_li_result = await db.execute(src_li_stmt)
+        src_item_descs = set(row[0] for row in src_li_result.fetchall())
+
+        filtered_dupes = []
+        for dupe in near_dupes:
+            dupe_li_stmt = select(InvoiceLineItem.item_desc).where(
+                InvoiceLineItem.invoice_id == dupe.id,
+            )
+            dupe_li_result = await db.execute(dupe_li_stmt)
+            dupe_item_descs = set(row[0] for row in dupe_li_result.fetchall())
+
+            # At least one common normalized item_desc required
+            if src_item_descs & dupe_item_descs:
+                filtered_dupes.append(dupe)
+
+        near_dupes = filtered_dupes
 
     for dupe in near_dupes:
         temporal_distance = abs((invoice.invoice_date - dupe.invoice_date).days)

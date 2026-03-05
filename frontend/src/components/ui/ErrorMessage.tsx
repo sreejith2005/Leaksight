@@ -9,16 +9,16 @@ export function ErrorMessage({ message, onDismiss }: ErrorMessageProps) {
   return (
     <div
       style={{
-        background: 'var(--color-prussian-blue)',
+        background: 'var(--color-danger-dim)',
         borderLeft: '4px solid var(--color-danger)',
         padding: 'var(--space-3) var(--space-4)',
-        borderRadius: 'var(--border-radius)',
+        borderRadius: 'var(--radius-md)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 'var(--space-3)',
-        color: 'var(--color-white)',
-        fontSize: '14px',
+        color: 'var(--text-primary)',
+        fontSize: 'var(--text-sm)',
       }}
     >
       <span>{message}</span>
@@ -28,7 +28,7 @@ export function ErrorMessage({ message, onDismiss }: ErrorMessageProps) {
           style={{
             background: 'transparent',
             border: 'none',
-            color: 'var(--color-grey)',
+            color: 'var(--text-secondary)',
             cursor: 'pointer',
             fontSize: '16px',
           }}

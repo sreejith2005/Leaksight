@@ -41,52 +41,77 @@ export default function LoginPage() {
 
   return (
     <div
+      className="noise-overlay"
       style={{
         minHeight: '100vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'var(--color-black)',
+        backgroundColor: 'var(--bg-base)',
         padding: 'var(--space-4)',
       }}
     >
       <div
+        className="animate-fadeIn"
         style={{
           width: '100%',
-          maxWidth: 400,
-          backgroundColor: 'var(--color-prussian-blue)',
-          borderRadius: 'var(--radius-lg)',
-          padding: 'var(--space-8)',
-          border: '1px solid var(--color-border)',
+          maxWidth: 420,
+          backgroundColor: 'var(--bg-surface-1)',
+          borderRadius: 'var(--radius-xl)',
+          padding: 'var(--space-10) var(--space-8)',
+          border: '1px solid var(--border-subtle)',
+          boxShadow: 'var(--shadow-lg)',
         }}
       >
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
+        <div style={{ textAlign: 'center', marginBottom: 'var(--space-10)' }}>
           <span
             style={{
-              fontSize: '28px',
+              fontFamily: 'var(--font-display)',
+              fontSize: 'var(--text-3xl)',
               fontWeight: 700,
-              color: 'var(--color-orange)',
+              fontStyle: 'italic',
+              color: 'var(--accent)',
               letterSpacing: '-0.02em',
             }}
           >
             LeakSight
           </span>
-          <p style={{ fontSize: '14px', color: 'var(--color-muted)', marginTop: 'var(--space-2)' }}>
+          <div
+            style={{
+              width: 40,
+              height: 1,
+              background: 'linear-gradient(90deg, transparent, var(--accent), transparent)',
+              margin: 'var(--space-3) auto',
+              opacity: 0.5,
+            }}
+          />
+          <p
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+            }}
+          >
             Enterprise Commercial Intelligence
           </p>
         </div>
 
         <form onSubmit={handleSubmit}>
           {/* Email */}
-          <div style={{ marginBottom: 'var(--space-4)' }}>
+          <div style={{ marginBottom: 'var(--space-5)' }}>
             <label
               style={{
                 display: 'block',
-                fontSize: '12px',
-                color: 'var(--color-muted)',
+                fontFamily: 'var(--font-body)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+                color: 'var(--text-secondary)',
                 textTransform: 'uppercase',
-                marginBottom: 'var(--space-1)',
+                letterSpacing: '0.06em',
+                marginBottom: 'var(--space-2)',
               }}
             >
               Email
@@ -100,32 +125,39 @@ export default function LoginPage() {
               autoComplete="email"
               style={{
                 width: '100%',
-                backgroundColor: 'var(--color-black)',
-                color: 'var(--color-grey)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-sm)',
-                padding: 'var(--space-3)',
-                fontSize: '14px',
+                backgroundColor: 'var(--bg-base)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-3) var(--space-4)',
+                fontFamily: 'var(--font-body)',
+                fontSize: 'var(--text-sm)',
                 outline: 'none',
+                transition: 'border-color 200ms ease',
               }}
               onFocus={(e) => {
-                (e.target as HTMLElement).style.borderColor = 'var(--color-orange)';
+                (e.target as HTMLElement).style.borderColor = 'var(--accent)';
+                (e.target as HTMLElement).style.boxShadow = '0 0 0 3px var(--accent-dim)';
               }}
               onBlur={(e) => {
-                (e.target as HTMLElement).style.borderColor = 'var(--color-border)';
+                (e.target as HTMLElement).style.borderColor = 'var(--border-default)';
+                (e.target as HTMLElement).style.boxShadow = 'none';
               }}
             />
           </div>
 
           {/* Password */}
-          <div style={{ marginBottom: 'var(--space-6)' }}>
+          <div style={{ marginBottom: 'var(--space-8)' }}>
             <label
               style={{
                 display: 'block',
-                fontSize: '12px',
-                color: 'var(--color-muted)',
+                fontFamily: 'var(--font-body)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+                color: 'var(--text-secondary)',
                 textTransform: 'uppercase',
-                marginBottom: 'var(--space-1)',
+                letterSpacing: '0.06em',
+                marginBottom: 'var(--space-2)',
               }}
             >
               Password
@@ -139,19 +171,23 @@ export default function LoginPage() {
               autoComplete="current-password"
               style={{
                 width: '100%',
-                backgroundColor: 'var(--color-black)',
-                color: 'var(--color-grey)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-sm)',
-                padding: 'var(--space-3)',
-                fontSize: '14px',
+                backgroundColor: 'var(--bg-base)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-3) var(--space-4)',
+                fontFamily: 'var(--font-body)',
+                fontSize: 'var(--text-sm)',
                 outline: 'none',
+                transition: 'border-color 200ms ease',
               }}
               onFocus={(e) => {
-                (e.target as HTMLElement).style.borderColor = 'var(--color-orange)';
+                (e.target as HTMLElement).style.borderColor = 'var(--accent)';
+                (e.target as HTMLElement).style.boxShadow = '0 0 0 3px var(--accent-dim)';
               }}
               onBlur={(e) => {
-                (e.target as HTMLElement).style.borderColor = 'var(--color-border)';
+                (e.target as HTMLElement).style.borderColor = 'var(--border-default)';
+                (e.target as HTMLElement).style.boxShadow = 'none';
               }}
             />
           </div>

@@ -24,11 +24,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     libcairo2-dev \
     libpango1.0-dev \
-    libgdk-pixbuf2.0-dev \
+    libgdk-pixbuf-2.0-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+COPY requirements_docker.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements_docker.txt
 
 
 # --- Stage 2: Runtime ---
@@ -47,7 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
-    libgdk-pixbuf2.0-0 \
+    libgdk-pixbuf-2.0-0 \
     libffi8 \
     shared-mime-info \
     # PDF processing
@@ -55,7 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     # PaddleOCR runtime deps
     libgomp1 \
-    libgl1-mesa-glx \
+    libgl1-mesa-dev \
     libglib2.0-0 \
     # Utilities
     curl \

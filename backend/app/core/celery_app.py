@@ -38,6 +38,10 @@ celery_app.conf.accept_content = ["json"]
 celery_app.conf.task_time_limit = 3600       # Hard kill after 1 hour
 celery_app.conf.task_soft_time_limit = 3000  # Soft limit: 50 min, 10 min cleanup
 
+# --- Reliability: acknowledge after task completes, re-queue on worker loss ---
+celery_app.conf.task_acks_late = True
+celery_app.conf.task_reject_on_worker_lost = True
+
 # --- Worker memory management ---
 # Forces worker process restart after 50 tasks, releasing PaddleOCR memory
 celery_app.conf.worker_max_tasks_per_child = 50

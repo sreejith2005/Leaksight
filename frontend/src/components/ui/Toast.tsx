@@ -3,7 +3,7 @@ import { useToast } from '../../context/ToastContext';
 
 const typeStyles: Record<string, { border: string; icon: string }> = {
   success: { border: 'var(--color-success)', icon: '✓' },
-  error: { border: 'var(--color-error)', icon: '✕' },
+  error: { border: 'var(--color-danger)', icon: '✕' },
   warning: { border: 'var(--color-warning)', icon: '⚠' },
 };
 
@@ -72,12 +72,13 @@ function ToastItem({
         alignItems: 'flex-start',
         gap: 'var(--space-3)',
         padding: 'var(--space-4)',
-        backgroundColor: 'var(--color-prussian-blue)',
+        backgroundColor: 'var(--bg-elevated)',
         borderLeft: `4px solid ${style.border}`,
-        borderRadius: 'var(--radius-md)',
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
-        color: 'var(--color-grey)',
-        fontSize: '14px',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-lg)',
+        color: 'var(--text-primary)',
+        fontFamily: 'var(--font-body)',
+        fontSize: 'var(--text-sm)',
         lineHeight: 1.5,
       }}
     >
@@ -103,7 +104,7 @@ function ToastItem({
           flexShrink: 0,
           background: 'none',
           border: 'none',
-          color: 'var(--color-muted)',
+          color: 'var(--text-muted)',
           cursor: 'pointer',
           fontSize: '16px',
           padding: 0,

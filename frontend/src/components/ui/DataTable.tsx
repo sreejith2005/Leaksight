@@ -45,7 +45,8 @@ export function DataTable<T>({
         style={{
           width: '100%',
           borderCollapse: 'collapse',
-          fontSize: '14px',
+          fontFamily: 'var(--font-body)',
+          fontSize: 'var(--text-sm)',
         }}
       >
         <thead>
@@ -59,12 +60,12 @@ export function DataTable<T>({
                     padding: 'var(--space-3) var(--space-4)',
                     textAlign: 'left',
                     fontWeight: 600,
-                    fontSize: '12px',
+                    fontSize: 'var(--text-xs)',
                     textTransform: 'uppercase' as const,
-                    letterSpacing: '0.05em',
-                    color: 'var(--color-muted)',
-                    backgroundColor: 'var(--color-prussian-blue)',
-                    borderBottom: '1px solid var(--color-border)',
+                    letterSpacing: '0.06em',
+                    color: 'var(--text-secondary)',
+                    backgroundColor: 'var(--bg-surface-1)',
+                    borderBottom: '1px solid var(--border-default)',
                     cursor: header.column.getCanSort() ? 'pointer' : 'default',
                     userSelect: header.column.getCanSort() ? 'none' : undefined,
                     whiteSpace: 'nowrap',
@@ -94,9 +95,11 @@ export function DataTable<T>({
               <td
                 colSpan={columns.length}
                 style={{
-                  padding: 'var(--space-8)',
+                  padding: 'var(--space-12)',
                   textAlign: 'center',
-                  color: 'var(--color-muted)',
+                  color: 'var(--text-muted)',
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 'var(--text-sm)',
                 }}
               >
                 No data available
@@ -108,16 +111,16 @@ export function DataTable<T>({
                 key={row.id}
                 onClick={() => onRowClick?.(row.original)}
                 style={{
-                  backgroundColor: i % 2 === 0 ? 'var(--color-black)' : 'var(--color-prussian-blue)',
+                  backgroundColor: i % 2 === 0 ? 'var(--bg-base)' : 'var(--bg-surface-2)',
                   cursor: onRowClick ? 'pointer' : 'default',
-                  transition: 'background-color 0.15s',
+                  transition: 'background-color 150ms ease',
                 }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(252, 163, 17, 0.08)';
+                  (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--bg-surface-3)';
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLElement).style.backgroundColor =
-                    i % 2 === 0 ? 'var(--color-black)' : 'var(--color-prussian-blue)';
+                    i % 2 === 0 ? 'var(--bg-base)' : 'var(--bg-surface-2)';
                 }}
               >
                 {row.getVisibleCells().map((cell) => (
@@ -125,9 +128,10 @@ export function DataTable<T>({
                     key={cell.id}
                     style={{
                       padding: 'var(--space-3) var(--space-4)',
-                      color: 'var(--color-grey)',
-                      borderBottom: '1px solid var(--color-border)',
+                      color: 'var(--text-primary)',
+                      borderBottom: '1px solid var(--border-subtle)',
                       whiteSpace: 'nowrap',
+                      lineHeight: '1.6',
                     }}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
