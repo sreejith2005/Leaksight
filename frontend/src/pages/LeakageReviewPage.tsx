@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getLeakageRecords } from '../api/endpoints/leakage';
+import { listRuns } from '../api/endpoints/ingest';
 import { DataTable } from '../components/ui/DataTable';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { Pagination } from '../components/ui/Pagination';
@@ -42,7 +43,7 @@ const columns: ColumnDef<LeakageRecord, unknown>[] = [
     accessorKey: 'vendor_name',
     header: 'Vendor',
     cell: ({ getValue }) => (
-      <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
+      <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontFamily: 'var(--font-body)', textTransform: 'capitalize' }}>
         {getValue() as string}
       </span>
     ),
@@ -88,7 +89,17 @@ const columns: ColumnDef<LeakageRecord, unknown>[] = [
     header: 'Date',
     cell: ({ getValue }) => {
       const v = getValue() as string | null;
-      return v ? new Date(v).toLocaleDateString() : '—';
+      if (!v) return '—';
+      const d = new Date(v);
+      const short = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return (
+        <span style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span>{d.toLocaleDateString()}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+            Run · {short}
+          </span>
+        </span>
+      );
     },
   },
 ];
@@ -98,16 +109,23 @@ export default function LeakageReviewPage() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('');
+  const [runFilter, setRunFilter] = useState<string>('');
   const [sorting, setSorting] = useState<SortingState>([]);
 
+  const { data: runsData } = useQuery({
+    queryKey: ['runs', { page: 1, page_size: 50 }],
+    queryFn: () => listRuns({ page: 1, page_size: 50 }),
+  });
+
   const { data, isLoading } = useQuery({
-    queryKey: ['leakageRecords', page, statusFilter, typeFilter, sorting],
+    queryKey: ['leakageRecords', page, statusFilter, typeFilter, runFilter, sorting],
     queryFn: () =>
       getLeakageRecords({
         page,
         page_size: PAGE_SIZE,
         status: statusFilter || undefined,
         leakage_type: typeFilter || undefined,
+        run_id: runFilter || undefined,
         sort_by: sorting[0]?.id,
         sort_dir: sorting[0]?.desc ? 'desc' : 'asc',
       }),
@@ -149,6 +167,17 @@ export default function LeakageReviewPage() {
           value={typeFilter}
           onChange={(v) => { setTypeFilter(v); setPage(1); }}
           options={TYPE_OPTIONS}
+        />
+        <FilterSelect
+          value={runFilter}
+          onChange={(v) => { setRunFilter(v); setPage(1); }}
+          options={[
+            { label: 'All Runs', value: '' },
+            ...(runsData?.data.map((r) => ({
+              label: `Run ${r.run_id.slice(0, 8)} — ${r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '?'}`,
+              value: r.run_id,
+            })) ?? []),
+          ]}
         />
       </div>
 

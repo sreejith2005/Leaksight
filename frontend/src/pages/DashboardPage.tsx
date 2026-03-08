@@ -219,7 +219,7 @@ export default function DashboardPage() {
                   (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--bg-base)';
                 }}
               >
-                <span style={{ fontFamily: 'var(--font-body)', color: 'var(--text-primary)', fontSize: 'var(--text-sm)' }}>
+                <span style={{ fontFamily: 'var(--font-body)', color: 'var(--text-primary)', fontSize: 'var(--text-sm)', textTransform: 'capitalize' }}>
                   {vendor.vendor_name}
                 </span>
                 <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'center' }}>

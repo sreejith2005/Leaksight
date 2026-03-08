@@ -137,6 +137,11 @@ input, select, textarea, button {
   animation: fadeIn 150ms ease-out both;
 }
 
+/* Vendor name display — capitalize each word (CSS-only, data stays lowercase) */
+.text-capitalize {
+  text-transform: capitalize;
+}
+
 /* Focus ring for accessibility */
 .focus-gilt:focus-visible {
   outline: none;

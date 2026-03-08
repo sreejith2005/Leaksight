@@ -17,7 +17,7 @@ const columns: ColumnDef<Vendor, unknown>[] = [
     accessorKey: 'normalized_name',
     header: 'Vendor Name',
     cell: ({ getValue }) => (
-      <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontFamily: 'var(--font-body)' }}>
+      <span style={{ color: 'var(--text-primary)', fontWeight: 500, fontFamily: 'var(--font-body)', textTransform: 'capitalize' }}>
         {getValue() as string}
       </span>
     ),

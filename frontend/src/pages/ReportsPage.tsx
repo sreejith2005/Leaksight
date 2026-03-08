@@ -226,7 +226,7 @@ function CFOSummaryView({ summary }: { summary: CFOSummaryResponse }) {
                   borderRadius: 'var(--radius-md)',
                 }}
               >
-                <span style={{ fontFamily: 'var(--font-body)', color: 'var(--text-primary)', fontSize: 'var(--text-sm)' }}>{v.vendor_name}</span>
+                <span style={{ fontFamily: 'var(--font-body)', color: 'var(--text-primary)', fontSize: 'var(--text-sm)', textTransform: 'capitalize' }}>{v.vendor_name}</span>
                 <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'center' }}>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{v.record_count} findings</span>
                   <span style={{ fontFamily: 'var(--font-display)', color: 'var(--accent)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>

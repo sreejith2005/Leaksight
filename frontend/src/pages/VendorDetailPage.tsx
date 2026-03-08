@@ -78,7 +78,7 @@ export default function VendorDetailPage() {
         ← Back to Vendors
       </button>
 
-      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-3xl)', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 'var(--space-8)', letterSpacing: '-0.01em' }}>
+      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-3xl)', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 'var(--space-8)', letterSpacing: '-0.01em', textTransform: 'capitalize' }}>
         {vendor.normalized_name}
       </h1>
 
