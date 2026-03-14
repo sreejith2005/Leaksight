@@ -231,3 +231,32 @@ This document records all significant architectural decisions made for LeakSight
 - Reviewers can inspect the evidence (which includes all overlapping version IDs) and manually confirm the correct pricing
 - May increase the number of PRICE_MISMATCH records that require review — acceptable trade-off for auditability
 - `_resolve_overlap_by_item()` function is retained in rule1_price_mismatch.py for reference but no longer called
+
+---
+
+## ADR-014: Currency Display Selector — Deferred to V2
+
+**Date:** 2026-03-09
+**Status:** BACKLOG — implement after V1 pilot completion
+**Context:** All leakage amounts are stored and calculated in tenant base currency (INR). A site-wide currency selector would allow viewing amounts in other currencies using display-layer conversion (not affecting stored values).
+**Why deferred:** V1 targets Indian enterprise clients. All contracts, invoices, and leakage amounts are in INR. A display converter adds UI complexity without business value for V1 pilot clients.
+**V2 implementation notes:**
+- Add fx_rates lookup at report render time for display conversion
+- Store display_currency preference in tenant_settings table (column already exists or add: `display_currency CHAR(3) DEFAULT NULL` — NULL means use base_currency)
+- Apply conversion in frontend `formatCurrency()` utility
+- Never convert stored amounts — display only
+- The `formatCurrency()` utility in `frontend/src/utils/formatCurrency.ts` is the correct place to apply this — pass the display currency as a parameter
+- Ensure ₹ symbol is replaced correctly when display currency changes
+- Must handle cases where no FX rate exists for the selected display currency + date combination — show original currency with a tooltip explaining conversion is unavailable
+
+---
+
+## ADR-015: PDF Library — WeasyPrint Retained with Graceful Fallback
+
+**Date:** 2026-03-09
+**Status:** ACCEPTED
+**Context:** WeasyPrint (ADR-007) requires Cairo/Pango system libraries that are not available on Windows native. The PDF evidence-pack endpoint returns HTTP 500 on Windows development environments.
+**Decision:** Retain WeasyPrint as the PDF renderer (it works correctly in the production Docker environment). Add a graceful 503 response with auto-fallback to Excel export on the frontend when PDF generation is unavailable.
+**Reason:** WeasyPrint is the correct production choice (verified working in Docker). Alternative pure-Python PDF libraries (xhtml2pdf, reportlab, fpdf2) would require rewriting the HTML template or accepting degraded output quality. Since PDF generation is confirmed working in Docker production, the correct fix is graceful degradation for development environments.
+**Template approach:** HTML-based preserved (evidence_pack.html Jinja2 template unchanged)
+**Verified:** Backend returns 503 with descriptive message; frontend catches 503 and auto-triggers Excel download as fallback

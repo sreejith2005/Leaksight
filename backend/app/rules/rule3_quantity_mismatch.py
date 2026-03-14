@@ -9,7 +9,7 @@ received (GRN) or ordered (PO). Authority hierarchy: GRN > PO > Nothing.
 Leakage type: QUANTITY_MISMATCH.
 """
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional
 from uuid import UUID
 
@@ -199,7 +199,9 @@ async def evaluate(
         return None  # Invoice qty at or below authority qty — clean
 
     # ── Step 4: Leakage amount ─────────────────────────────────────────
-    leakage_amount = quantity_difference * unit_price
+    leakage_amount = (quantity_difference * unit_price).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP
+    )
 
     # ── Step 5: Confidence ─────────────────────────────────────────────
     if authority_used == "GRN":

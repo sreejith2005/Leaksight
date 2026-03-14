@@ -19,7 +19,7 @@ Eight-step evaluation:
 
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, List, Optional
 from uuid import UUID
 
@@ -406,7 +406,9 @@ async def evaluate(
         return None  # Invoice price at or below contract price — clean
 
     quantity = Decimal(str(invoice_line_item.quantity))
-    total_leakage = price_difference * quantity
+    total_leakage = (price_difference * quantity).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP
+    )
 
     # ── Step 6: Confidence ─────────────────────────────────────────────
     confidence = min(vendor_match_confidence, item_confidence)

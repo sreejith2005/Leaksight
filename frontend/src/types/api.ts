@@ -114,6 +114,7 @@ export interface RunStatusResponse {
 
 export interface LeakageRecord {
   id: string;
+  run_id: string | null;
   leakage_type: LeakageType;
   amount: number;
   currency: string;

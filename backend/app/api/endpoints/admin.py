@@ -18,6 +18,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.database import get_db
@@ -43,6 +44,10 @@ class FxRateItem(BaseModel):
     rate: Decimal
     rate_date: date
     source: str = "MANUAL_UPLOAD"
+
+
+# Valid values for fx_source_enum in PostgreSQL
+_VALID_FX_SOURCES = {"ECB", "RBI", "MANUAL_UPLOAD", "ADMIN_IMPORT"}
 
 
 class FxRateUploadRequest(BaseModel):
@@ -108,21 +113,104 @@ async def upload_fx_rates(
             },
         )
 
+    # Validate each rate before insertion
+    for rate_item in body.rates:
+        if rate_item.rate <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": f"Rate must be positive, got {rate_item.rate}",
+                        "details": [{"field": "rate", "message": "Rate must be a positive number"}],
+                    }
+                },
+            )
+        if rate_item.from_currency.upper() == rate_item.to_currency.upper():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": f"from_currency and to_currency must be different, got '{rate_item.from_currency.upper()}'",
+                        "details": [{"field": "from_currency", "message": "From and To currencies must be different"}],
+                    }
+                },
+            )
+        # Validate source against allowed PostgreSQL enum values
+        source_val = rate_item.source.upper() if rate_item.source else "MANUAL_UPLOAD"
+        if source_val not in _VALID_FX_SOURCES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": f"Invalid source '{rate_item.source}'. Must be one of: {', '.join(sorted(_VALID_FX_SOURCES))}",
+                        "details": [{"field": "source", "message": f"Must be one of: {', '.join(sorted(_VALID_FX_SOURCES))}"}],
+                    }
+                },
+            )
+
+    # Check for duplicate rates before insertion
+    for rate_item in body.rates:
+        dup_stmt = select(FxRate).where(
+            FxRate.tenant_id == tenant_id,
+            FxRate.from_currency == rate_item.from_currency.upper(),
+            FxRate.to_currency == rate_item.to_currency.upper(),
+            FxRate.rate_date == rate_item.rate_date,
+        )
+        dup_result = await db.execute(dup_stmt)
+        if dup_result.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error": {
+                        "code": "DUPLICATE_RATE",
+                        "message": f"An exchange rate for {rate_item.from_currency.upper()}/{rate_item.to_currency.upper()} on {rate_item.rate_date} already exists. Update the existing rate or use a different date.",
+                    }
+                },
+            )
+
     uploaded = []
     for rate_item in body.rates:
+        # Normalize source to valid enum value
+        source_val = rate_item.source.upper() if rate_item.source else "MANUAL_UPLOAD"
         fx_rate = FxRate(
             tenant_id=tenant_id,
             from_currency=rate_item.from_currency.upper(),
             to_currency=rate_item.to_currency.upper(),
             rate=rate_item.rate,
             rate_date=rate_item.rate_date,
-            source=rate_item.source,
+            source=source_val,
             uploaded_by_user_id=current_user.user_id,
         )
         db.add(fx_rate)
         uploaded.append(fx_rate)
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": {
+                    "code": "DUPLICATE_RATE",
+                    "message": "An exchange rate for this currency pair and date already exists. Update the existing rate or use a different date.",
+                }
+            },
+        )
+    except DataError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Invalid data format. Check that all fields have valid values and source is one of: ECB, RBI, MANUAL_UPLOAD, ADMIN_IMPORT.",
+                }
+            },
+        )
 
     logger.info(
         "fx_rates_uploaded",

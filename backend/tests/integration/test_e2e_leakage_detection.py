@@ -615,7 +615,7 @@ class TestEvidenceTraces:
         calc = ev["calculation"]
         assert calc["price_difference_per_unit"] == str(Decimal("20"))
         assert calc["quantity"] == str(Decimal("500"))
-        assert calc["total_leakage"] == str(Decimal("10000"))
+        assert calc["total_leakage"] == str(Decimal("10000.00"))
 
         # match_confidence_breakdown block
         mcb = ev["match_confidence_breakdown"]

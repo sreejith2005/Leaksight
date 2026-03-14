@@ -84,7 +84,7 @@ function FxRatesSection() {
     to_currency: '',
     rate: '',
     rate_date: '',
-    source: 'manual',
+    source: 'MANUAL_UPLOAD',
   });
 
   const { data: fxData, isLoading } = useQuery({
@@ -107,10 +107,17 @@ function FxRatesSection() {
       }),
     onSuccess: (data) => {
       addToast('success', `Uploaded ${data.uploaded_count} FX rate(s)`);
-      setNewRate({ from_currency: '', to_currency: '', rate: '', rate_date: '', source: 'manual' });
+      setNewRate({ from_currency: '', to_currency: '', rate: '', rate_date: '', source: 'MANUAL_UPLOAD' });
       queryClient.invalidateQueries({ queryKey: ['fxRates'] });
     },
-    onError: (err: Error) => addToast('error', err.message),
+    onError: (err: Error) => {
+      // Show specific message for duplicate rate (409 Conflict)
+      if ('status' in err && (err as any).status === 409) {
+        addToast('error', 'An exchange rate for this currency pair and date already exists. Update the existing rate or use a different date.');
+      } else {
+        addToast('error', err.message);
+      }
+    },
   });
 
   const canSubmit =

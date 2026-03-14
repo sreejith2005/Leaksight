@@ -15,7 +15,7 @@ export function getContracts(params?: {
   if (params?.page) searchParams.set('page', String(params.page));
   if (params?.page_size) searchParams.set('page_size', String(params.page_size));
   const qs = searchParams.toString();
-  return apiGet<PaginatedResponse<Contract>>(`/contracts${qs ? `?${qs}` : ''}`);
+  return apiGet<PaginatedResponse<Contract>>(`/contracts/${qs ? `?${qs}` : ''}`);
 }
 
 export function getContractVersions(contractId: string): Promise<ContractVersionsResponse> {
@@ -38,5 +38,5 @@ export interface CreateContractRequest {
 }
 
 export function createContract(data: CreateContractRequest): Promise<Record<string, unknown>> {
-  return apiPost<Record<string, unknown>>('/contracts', data);
+  return apiPost<Record<string, unknown>>('/contracts/', data);
 }

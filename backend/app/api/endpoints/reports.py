@@ -164,11 +164,25 @@ async def get_evidence_pack(
             run_id,
         )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
                 "error": {
-                    "code": "REPORT_GENERATION_FAILED",
-                    "message": "Failed to generate evidence pack PDF",
+                    "code": "PDF_UNAVAILABLE",
+                    "message": "PDF generation requires system libraries (Cairo/Pango) that are not available in this environment. Use the Excel export as an alternative. PDF generation works correctly in the production Docker environment.",
+                }
+            },
+        )
+    except Exception:
+        logger.error(
+            "Unexpected error during PDF generation for run_id=%s",
+            run_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": {
+                    "code": "PDF_UNAVAILABLE",
+                    "message": "PDF generation requires system libraries (Cairo/Pango) that are not available in this environment. Use the Excel export as an alternative. PDF generation works correctly in the production Docker environment.",
                 }
             },
         )

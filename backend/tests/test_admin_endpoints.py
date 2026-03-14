@@ -60,6 +60,10 @@ async def test_upload_fx_rates_success():
     mock_db = AsyncMock()
     mock_db.add = MagicMock()
     mock_db.flush = AsyncMock()
+    # Mock execute for duplicate-check SELECT — return no existing rate
+    dup_result_mock = MagicMock()
+    dup_result_mock.scalar_one_or_none.return_value = None
+    mock_db.execute = AsyncMock(return_value=dup_result_mock)
 
     app = _create_app(_admin_user(), mock_db)
 

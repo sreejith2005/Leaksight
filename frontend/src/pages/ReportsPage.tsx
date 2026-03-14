@@ -8,6 +8,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useToast } from '../context/ToastContext';
+import { formatRunLabel } from '../utils/formatRun';
 import type { CFOSummaryResponse } from '../types/api';
 
 function formatCurrency(amount: number, currency = 'USD'): string {
@@ -24,9 +25,17 @@ export default function ReportsPage() {
 
   /* ── Completed runs list ─────────────────────────────────────── */
   const { data: runsData, isLoading: runsLoading } = useQuery({
-    queryKey: ['runs', { page: 1, page_size: 20, status: 'COMPLETE' }],
-    queryFn: () => listRuns({ page: 1, page_size: 20, status: 'COMPLETE' }),
+    queryKey: ['runs', { page: 1, page_size: 50 }],
+    queryFn: () => listRuns({ page: 1, page_size: 50 }),
+    staleTime: 0,
+    refetchOnMount: 'always' as const,
   });
+
+  // Filter to only completed/partial-success runs
+  const completedRuns = React.useMemo(
+    () => runsData?.data.filter((r) => r.status === 'COMPLETE' || r.status === 'PARTIAL_SUCCESS') ?? [],
+    [runsData],
+  );
 
   /* ── CFO summary for selected run ───────────────────────────── */
   const { data: summary, isLoading: summaryLoading } = useQuery({
@@ -38,7 +47,17 @@ export default function ReportsPage() {
   /* ── Download mutations ──────────────────────────────────────── */
   const evidenceDownload = useMutation({
     mutationFn: (runId: string) => downloadEvidencePack(runId),
-    onError: (err: Error) => addToast('error', `Download failed: ${err.message}`),
+    onError: (err: Error) => {
+      // 503 = PDF unavailable on this environment — auto-fallback to Excel
+      if ('status' in err && (err as any).status === 503) {
+        addToast('warning', 'PDF export requires the production environment. Downloading Excel instead...');
+        if (selectedRunId) {
+          excelDownload.mutate(selectedRunId);
+        }
+      } else {
+        addToast('error', `Download failed: ${err.message}`);
+      }
+    },
   });
 
   const excelDownload = useMutation({
@@ -46,12 +65,12 @@ export default function ReportsPage() {
     onError: (err: Error) => addToast('error', `Download failed: ${err.message}`),
   });
 
-  // Auto-select first completed run
+  // Auto-select most recent completed/partial-success run
   React.useEffect(() => {
-    if (runsData?.data.length && !selectedRunId) {
-      setSelectedRunId(runsData.data[0].run_id);
+    if (completedRuns.length && !selectedRunId) {
+      setSelectedRunId(completedRuns[0].run_id);
     }
-  }, [runsData, selectedRunId]);
+  }, [completedRuns, selectedRunId]);
 
   if (runsLoading) {
     return (
@@ -61,7 +80,7 @@ export default function ReportsPage() {
     );
   }
 
-  if (!runsData?.data.length) {
+  if (!completedRuns.length) {
     return (
       <EmptyState
         title="No completed runs"
@@ -100,15 +119,15 @@ export default function ReportsPage() {
             border: '1px solid var(--border-default)',
             borderRadius: 'var(--radius-md)',
             padding: 'var(--space-2) var(--space-3)',
-            fontFamily: 'var(--font-mono)',
+            fontFamily: 'var(--font-body)',
             fontSize: 'var(--text-xs)',
             outline: 'none',
             minWidth: 300,
           }}
         >
-          {runsData.data.map((run) => (
+          {completedRuns.map((run) => (
             <option key={run.run_id} value={run.run_id}>
-              {run.run_id.slice(0, 8)} — {run.created_at ? new Date(run.created_at).toLocaleDateString() : 'Unknown'} ({run.leakage_record_count} findings)
+              {formatRunLabel(run, completedRuns)}
             </option>
           ))}
         </select>

@@ -20,6 +20,13 @@ This document tracks known UX limitations for transparency during pilot testing.
 - **Expected**: Should fall back to the tenant's base currency (INR)
 - **Impact**: Medium — could confuse users if a record renders as "$7,000" instead of "₹7,000"
 
+### 3. PDF Generation Not Available on Windows (Native)
+- **Where**: Reports page → Download Evidence Pack (PDF)
+- **Behavior**: Returns 503 with friendly message, auto-triggers Excel fallback
+- **Root cause**: WeasyPrint requires Cairo/Pango system libraries unavailable on Windows native
+- **Fix**: Run backend in Docker (verified working — see Dockerfile.weasyprint-test)
+- **Impact**: None for pilot — Excel export contains identical data. PDF works in production.
+
 ---
 
 ## P2 — Acceptable for Pilot, Fix Before GA
@@ -76,6 +83,13 @@ This document tracks known UX limitations for transparency during pilot testing.
 - **Behavior**: All documents uploaded manually via drag-and-drop
 - **Expected**: Future: SFTP/API integration with ERP systems
 - **Impact**: Out of scope for V1
+
+### 11. No Site-Wide Currency Display Selector
+- **Where**: System-wide (Dashboard, Reports, Leakage Review)
+- **Behavior**: All amounts displayed in tenant base currency (INR)
+- **Expected future**: User can select display currency (USD, EUR, etc.) from a top-bar selector; amounts converted at display time using stored FX rates
+- **Impact**: None for V1 Indian clients
+- **See**: DECISIONS.md — "Currency Display Selector — Deferred to V2"
 
 ---
 

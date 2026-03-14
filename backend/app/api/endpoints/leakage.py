@@ -100,6 +100,7 @@ async def list_leakage_records(
     base_stmt = (
         select(
             LeakageRecord.id,
+            LeakageRecord.run_id,
             LeakageRecord.leakage_type,
             LeakageRecord.amount,
             LeakageRecord.currency,
@@ -181,6 +182,7 @@ async def list_leakage_records(
     data = [
         {
             "id": str(row.id),
+            "run_id": str(row.run_id) if row.run_id else None,
             "leakage_type": row.leakage_type,
             "amount": float(row.amount),
             "currency": row.currency,

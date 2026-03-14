@@ -18,7 +18,7 @@ export function getVendors(params?: {
   if (params?.page) searchParams.set('page', String(params.page));
   if (params?.page_size) searchParams.set('page_size', String(params.page_size));
   const qs = searchParams.toString();
-  return apiGet<PaginatedResponse<Vendor>>(`/vendors${qs ? `?${qs}` : ''}`);
+  return apiGet<PaginatedResponse<Vendor>>(`/vendors/${qs ? `?${qs}` : ''}`);
 }
 
 export function getVendor(id: string): Promise<VendorDetail> {

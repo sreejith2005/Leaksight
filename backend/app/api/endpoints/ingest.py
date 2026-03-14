@@ -8,6 +8,7 @@ Source: docs/API_CONTRACTS.md (Section 3 — File Ingestion Endpoints),
 Endpoints:
   POST /api/v1/ingest/upload       — Upload a single document
   POST /api/v1/ingest/trigger-run  — Trigger an analysis run
+  GET  /api/v1/ingest/runs         — List all analysis runs for a tenant
   GET  /api/v1/ingest/runs/{run_id}/status — Get run status
 """
 
@@ -16,7 +17,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -353,6 +354,75 @@ async def trigger_run(
         "status": "QUEUED",
         "total_documents": len(request.document_ids),
         "created_at": str(run.created_at) if run.created_at else None,
+    }
+
+
+@router.get("/runs")
+async def list_runs(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    status_filter: str | None = Query(None, alias="status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+) -> dict[str, Any]:
+    """List all analysis runs for the tenant.
+
+    Supports optional status filter and standard pagination.
+    Defined in API_CONTRACTS.md Section 3.5 but was not previously implemented.
+    """
+    from sqlalchemy import desc
+
+    tenant_id = current_user.tenant_id
+    await set_tenant_context(db, tenant_id)
+
+    base_filter = [AnalysisRun.tenant_id == tenant_id]
+    if status_filter:
+        base_filter.append(AnalysisRun.status == status_filter)
+
+    # Count
+    count_stmt = select(func.count()).select_from(AnalysisRun).where(*base_filter)
+    count_result = await db.execute(count_stmt)
+    total_records = count_result.scalar() or 0
+    total_pages = max(1, (total_records + page_size - 1) // page_size)
+
+    # Data
+    data_stmt = (
+        select(AnalysisRun)
+        .where(*base_filter)
+        .order_by(desc(AnalysisRun.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    result = await db.execute(data_stmt)
+    runs = result.scalars().all()
+
+    data = [
+        {
+            "run_id": str(run.id),
+            "status": run.status,
+            "total_documents": run.total_documents or 0,
+            "processed_documents": run.processed_documents or 0,
+            "progress_percentage": round(
+                ((run.processed_documents or 0) / (run.total_documents or 1)) * 100, 1
+            ),
+            "total_leakage_found": float(run.total_leakage_found or 0),
+            "leakage_record_count": run.leakage_record_count or 0,
+            "error_summary": run.error_summary,
+            "started_at": str(run.started_at) if run.started_at else None,
+            "completed_at": str(run.completed_at) if run.completed_at else None,
+            "created_at": str(run.created_at) if run.created_at else None,
+        }
+        for run in runs
+    ]
+
+    return {
+        "data": data,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_records": total_records,
+            "total_pages": total_pages,
+        },
     }
 
 

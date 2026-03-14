@@ -200,7 +200,7 @@ def test_evidence_pack_not_found(mock_ctx, mock_assemble):
     assert response.status_code == 404
 
 
-# ── Test 5: Evidence pack render failure → 500 ───────────────────────
+# ── Test 5: Evidence pack render failure → 503 ───────────────────────
 
 
 @patch(f"{_PATCH_PREFIX}.render_to_pdf")
@@ -214,8 +214,8 @@ def test_evidence_pack_render_failure(mock_ctx, mock_assemble, mock_render):
     client = TestClient(app)
     response = client.get(f"/api/v1/reports/runs/{RUN_ID}/evidence-pack")
 
-    assert response.status_code == 500
-    assert "REPORT_GENERATION_FAILED" in response.json()["detail"]["error"]["code"]
+    assert response.status_code == 503
+    assert "PDF_UNAVAILABLE" in response.json()["detail"]["error"]["code"]
 
 
 # ── Test 6: Excel export → 200 xlsx ──────────────────────────────────

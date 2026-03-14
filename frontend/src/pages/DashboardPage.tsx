@@ -33,14 +33,14 @@ export default function DashboardPage() {
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ['leakageSummary', latestRun?.run_id],
     queryFn: () => getLeakageSummary(latestRun!.run_id, 'ACCEPTED'),
-    enabled: !!latestRun && latestRun.status === 'COMPLETE',
+    enabled: !!latestRun && (latestRun.status === 'COMPLETE' || latestRun.status === 'PARTIAL_SUCCESS'),
   });
 
   /* ── CFO summary for latest complete run ─────────────────────── */
   const { data: cfoData } = useQuery({
     queryKey: ['cfoSummary', latestRun?.run_id],
     queryFn: () => getRunSummary(latestRun!.run_id),
-    enabled: !!latestRun && latestRun.status === 'COMPLETE',
+    enabled: !!latestRun && (latestRun.status === 'COMPLETE' || latestRun.status === 'PARTIAL_SUCCESS'),
   });
 
   const loading = runsLoading || summaryLoading;
@@ -55,12 +55,214 @@ export default function DashboardPage() {
 
   if (!latestRun) {
     return (
-      <EmptyState
-        title="No analysis runs"
-        description="Upload documents and trigger an analysis run to see your dashboard."
-        actionLabel="Go to Upload"
-        onAction={() => navigate('/upload')}
-      />
+      <div className="animate-fadeIn">
+        <h1
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'var(--text-3xl)',
+            fontWeight: 700,
+            color: 'var(--text-primary)',
+            marginBottom: 'var(--space-2)',
+            letterSpacing: '-0.01em',
+          }}
+        >
+          Dashboard
+        </h1>
+        <p style={{
+          fontFamily: 'var(--font-body)',
+          fontSize: 'var(--text-sm)',
+          color: 'var(--text-muted)',
+          marginBottom: 'var(--space-8)',
+        }}>
+          Welcome to LeakSight — your financial leakage detection engine
+        </p>
+
+        <Card style={{ marginBottom: 'var(--space-6)' }}>
+          <h3
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              marginBottom: 'var(--space-6)',
+            }}
+          >
+            Get Started in Three Steps
+          </h3>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+              gap: 'var(--space-4)',
+            }}
+          >
+            {/* Step 1 */}
+            <div
+              style={{
+                padding: 'var(--space-6)',
+                backgroundColor: 'var(--bg-base)',
+                borderRadius: 'var(--radius-md)',
+                borderLeft: '3px solid var(--accent)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 'var(--radius-full)',
+                    backgroundColor: 'var(--accent-dim)',
+                    color: 'var(--accent)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontFamily: 'var(--font-display)',
+                    fontWeight: 700,
+                    fontSize: 'var(--text-sm)',
+                    flexShrink: 0,
+                  }}
+                >
+                  1
+                </div>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-body)',
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    fontSize: 'var(--text-sm)',
+                  }}
+                >
+                  Upload Documents
+                </span>
+              </div>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+                Upload your contracts (Excel/PDF) and invoices (Excel/CSV). These form the commercial and financial truth that LeakSight compares.
+              </p>
+            </div>
+
+            {/* Step 2 */}
+            <div
+              style={{
+                padding: 'var(--space-6)',
+                backgroundColor: 'var(--bg-base)',
+                borderRadius: 'var(--radius-md)',
+                borderLeft: '3px solid var(--accent)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 'var(--radius-full)',
+                    backgroundColor: 'var(--accent-dim)',
+                    color: 'var(--accent)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontFamily: 'var(--font-display)',
+                    fontWeight: 700,
+                    fontSize: 'var(--text-sm)',
+                    flexShrink: 0,
+                  }}
+                >
+                  2
+                </div>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-body)',
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    fontSize: 'var(--text-sm)',
+                  }}
+                >
+                  Trigger Analysis
+                </span>
+              </div>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+                Select your uploaded documents and trigger an analysis run. LeakSight will parse, normalize, match, and apply three deterministic rules.
+              </p>
+            </div>
+
+            {/* Step 3 */}
+            <div
+              style={{
+                padding: 'var(--space-6)',
+                backgroundColor: 'var(--bg-base)',
+                borderRadius: 'var(--radius-md)',
+                borderLeft: '3px solid var(--accent)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 'var(--radius-full)',
+                    backgroundColor: 'var(--accent-dim)',
+                    color: 'var(--accent)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontFamily: 'var(--font-display)',
+                    fontWeight: 700,
+                    fontSize: 'var(--text-sm)',
+                    flexShrink: 0,
+                  }}
+                >
+                  3
+                </div>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-body)',
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    fontSize: 'var(--text-sm)',
+                  }}
+                >
+                  Review Findings
+                </span>
+              </div>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+                Review each flagged leakage finding with full evidence. Accept confirmed findings or reject false positives with notes. Generate CFO-ready reports.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 'var(--space-6)', textAlign: 'center' }}>
+            <button
+              onClick={() => navigate('/upload')}
+              style={{
+                backgroundColor: 'var(--accent)',
+                color: 'var(--text-inverse)',
+                border: 'none',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-3) var(--space-6)',
+                fontFamily: 'var(--font-body)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'background-color 150ms ease',
+              }}
+              onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = 'var(--accent-hover)'; }}
+              onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = 'var(--accent)'; }}
+            >
+              Start by Uploading Documents
+            </button>
+          </div>
+        </Card>
+      </div>
     );
   }
 
