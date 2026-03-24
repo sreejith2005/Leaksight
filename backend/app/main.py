@@ -24,6 +24,7 @@ from backend.app.core.middleware import (
     RequestLoggingMiddleware,
     TenantContextMiddleware,
 )
+from backend.app.tools.contract_structuring.router import router as structuring_router
 
 logger = get_logger(__name__)
 
@@ -86,6 +87,11 @@ def create_app() -> FastAPI:
 
     # --- Routes ---
     app.include_router(api_v1_router)
+    app.include_router(
+        structuring_router,
+        prefix="/api/v1/structuring",
+        tags=["Contract Structuring"],
+    )
 
     return app
 

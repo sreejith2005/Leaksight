@@ -19,3 +19,11 @@ from backend.app.models.derived import (  # noqa: F401
     DocumentHash,
 )
 from backend.app.models.notifications import Notification  # noqa: F401
+from backend.app.tools.contract_structuring.models import (  # noqa: F401
+    ContractStructuringRun,
+    ContractStructuringRunDocument,
+    RawContractTable,
+    ExtractedLineItem,
+    ExtractedClause,
+    ContractStructuringExport,
+)

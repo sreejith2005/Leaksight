@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 
-const NAV_ITEMS = [
+const CORE_NAV_ITEMS = [
   {
     to: '/',
     label: 'Dashboard',
@@ -37,6 +37,34 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+  {
+    to: '/notifications',
+    label: 'Notifications',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+      </svg>
+    ),
+  },
+];
+
+const STRUCTURING_NAV_ITEMS = [
+  {
+    to: '/structuring',
+    label: 'Contract Structuring',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="8" y1="13" x2="16" y2="13" />
+        <line x1="8" y1="17" x2="13" y2="17" />
+      </svg>
+    ),
+  },
+];
+
+const SUPPORT_NAV_ITEMS = [
   {
     to: '/vendors',
     label: 'Vendors',
@@ -83,6 +111,12 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+];
+
+const NAV_SECTIONS = [
+  { title: '', items: CORE_NAV_ITEMS },
+  { title: 'Contract Structuring', items: STRUCTURING_NAV_ITEMS },
+  { title: '', items: SUPPORT_NAV_ITEMS },
 ];
 
 export function Sidebar() {
@@ -134,50 +168,69 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav style={{ flex: 1, padding: 'var(--space-4) 0' }}>
-        {NAV_ITEMS.map((item) => {
-          const isActive =
-            item.to === '/'
-              ? location.pathname === '/'
-              : location.pathname.startsWith(item.to);
+      <nav style={{ flex: 1, padding: 'var(--space-4) 0', overflowY: 'auto' }}>
+        {NAV_SECTIONS.map((section, sectionIndex) => (
+          <div key={`${section.title}-${sectionIndex}`}>
+            {section.title && (
+              <div
+                style={{
+                  padding: 'var(--space-4) var(--space-6) var(--space-2)',
+                  fontFamily: 'var(--font-body)',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  color: 'var(--text-muted)',
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {section.title}
+              </div>
+            )}
+            {section.items.map((item) => {
+              const isActive =
+                item.to === '/'
+                  ? location.pathname === '/'
+                  : location.pathname.startsWith(item.to);
 
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-3)',
-                padding: 'var(--space-3) var(--space-6)',
-                color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
-                textDecoration: 'none',
-                fontFamily: 'var(--font-body)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: isActive ? 600 : 500,
-                letterSpacing: '0.01em',
-                borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent',
-                backgroundColor: isActive ? 'var(--accent-dim)' : 'transparent',
-                transition: 'all 150ms ease',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)';
-                  (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(139,143,163,0.04)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
-                  (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-                }
-              }}
-            >
-              {item.icon}
-              {item.label}
-            </NavLink>
-          );
-        })}
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-3)',
+                    padding: 'var(--space-3) var(--space-6)',
+                    color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                    textDecoration: 'none',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: isActive ? 600 : 500,
+                    letterSpacing: '0.01em',
+                    borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent',
+                    backgroundColor: isActive ? 'var(--accent-dim)' : 'transparent',
+                    transition: 'all 150ms ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)';
+                      (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(139,143,163,0.04)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
+                      (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+                    }
+                  }}
+                >
+                  {item.icon}
+                  {item.label}
+                </NavLink>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* Footer */}

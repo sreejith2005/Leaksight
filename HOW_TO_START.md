@@ -9,10 +9,19 @@ Open **two separate terminals** in the project folder:
 
 ```powershell
 .venv\Scripts\Activate.ps1
-python -m uvicorn backend.app.main:app --reload --port 8000
+.venv\Scripts\python.exe -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Terminal 2 — Frontend (port 5173)
+### Terminal 2 — Celery Worker
+
+```powershell
+.venv\Scripts\Activate.ps1
+.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring
+```
+
+`structuring` is the Tool A queue. It processes contract structuring runs, review export jobs, and LeakSight import writes.
+
+### Terminal 3 — Frontend (port 5173)
 
 ```powershell
 cd frontend

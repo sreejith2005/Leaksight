@@ -60,6 +60,15 @@ celery_app.conf.task_routes = {
     "backend.app.tasks.parse_task.parse_document": {"queue": "parse"},
     "backend.app.tasks.normalize_task.normalize_document": {"queue": "parse"},
     "backend.app.tasks.analysis_run_task.run_analysis": {"queue": "analysis"},
+    "backend.app.tools.contract_structuring.tasks.structure_single_contract": {
+        "queue": "structuring"
+    },
+    "backend.app.tools.contract_structuring.tasks.update_structuring_run_status": {
+        "queue": "structuring"
+    },
+    "backend.app.tools.contract_structuring.tasks.generate_structuring_export": {
+        "queue": "structuring"
+    },
 }
 
 # --- Default queue for any unrouted tasks ---
@@ -70,4 +79,5 @@ celery_app.conf.include = [
     "backend.app.tasks.parse_task",
     "backend.app.tasks.normalize_task",
     "backend.app.tasks.analysis_run_task",
+    "backend.app.tools.contract_structuring.tasks",
 ]

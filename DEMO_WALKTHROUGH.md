@@ -213,7 +213,7 @@ After completing the walkthrough, verify:
 |---------|-------|-----|
 | Login fails | Backend not running | Start backend: `.venv\Scripts\python.exe -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000` |
 | Dashboard empty | No analysis run in DB | Run `_upload_demo_data.py` to upload demo data and trigger analysis |
-| Only 0 findings | Worker not running | Start worker: `.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis` |
+| Only 0 findings | Worker not running | Start worker: `.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring` |
 | PDF download fails | WeasyPrint not installed | `pip install weasyprint` — requires system Cairo/Pango libraries |
 | Page loads blank | Frontend not running | Start frontend: `cd frontend && npm run dev` |
 
@@ -230,3 +230,41 @@ After completing the walkthrough, please note:
 5. **Actionability** (1-5): Could you take action based on the report outputs?
 6. **Overall** (1-5): Overall impression of the system?
 7. **Comments**: Any specific issues, suggestions, or observations?
+
+---
+
+## Tool A Demo
+
+=== TOOL A DEMO ===
+
+Pre-requisite: Run _generate_tool_a_demo_data.py to create demo files.
+
+### Step 12: Navigate to Contract Structuring in sidebar
+
+### Step 13: Click "New Run"
+Upload CTR-TOOL-001_v1.xlsx.
+Label: "Acme Supplies Demo Run".
+Click Start.
+
+### Step 14: Watch run status update to COMPLETE
+Expected: 8 line items found, all confidence >= 0.85.
+
+### Step 15: Click Review on the document card
+Expected: line item table shows 8 rows.
+Contract ID column shows CTR-TOOL-001 on every row.
+Unit column shows Nos.
+Unit Price shows correct INR values (850, 1200, 3500, etc.).
+
+### Step 16: Click "Confirm All High-Confidence"
+Expected: all 8 items move to CONFIRMED status with lock icon.
+
+### Step 17: Click "Send to LeakSight" on the export panel
+Confirm the dialog.
+Expected: success toast appears.
+
+### Step 18: Navigate to Contracts in the sidebar
+Expected: CTR-TOOL-001 appears in the contracts list.
+Vendor shows as acme supplies (normalized lowercase).
+
+### Step 19: This contract now serves as reference data for leakage detection
+Any future invoice from Acme Supplies for these items will be checked against these prices by the core leakage engine.

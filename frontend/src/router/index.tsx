@@ -14,6 +14,11 @@ const ContractsPage = lazy(() => import('../pages/ContractsPage'));
 const ReportsPage = lazy(() => import('../pages/ReportsPage'));
 const AdminPage = lazy(() => import('../pages/AdminPage'));
 const NotificationsPage = lazy(() => import('../pages/NotificationsPage'));
+const StructuringRunsPage = lazy(() => import('../pages/structuring/StructuringRunsPage'));
+const NewStructuringRunPage = lazy(() => import('../pages/structuring/NewStructuringRunPage'));
+const StructuringRunDetailPage = lazy(() => import('../pages/structuring/StructuringRunDetailPage'));
+const ContractReviewPage = lazy(() => import('../pages/structuring/ContractReviewPage'));
+const StructuringExportPage = lazy(() => import('../pages/structuring/StructuringExportPage'));
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -119,6 +124,46 @@ export const router = createBrowserRouter([
         element: (
           <SuspenseWrapper>
             <NotificationsPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'structuring',
+        element: (
+          <SuspenseWrapper>
+            <StructuringRunsPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'structuring/new',
+        element: (
+          <SuspenseWrapper>
+            <NewStructuringRunPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'structuring/:runId',
+        element: (
+          <SuspenseWrapper>
+            <StructuringRunDetailPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'structuring/:runId/contract/:documentId',
+        element: (
+          <SuspenseWrapper>
+            <ContractReviewPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'structuring/:runId/exports',
+        element: (
+          <SuspenseWrapper>
+            <StructuringExportPage />
           </SuspenseWrapper>
         ),
       },

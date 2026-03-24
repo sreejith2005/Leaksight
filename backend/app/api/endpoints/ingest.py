@@ -357,6 +357,75 @@ async def trigger_run(
     }
 
 
+@router.get("/documents")
+async def list_documents(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    doc_type: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+) -> dict[str, Any]:
+    """List uploaded documents for the current tenant.
+
+    Supports optional doc_type filter and standard pagination.
+    """
+    from sqlalchemy import desc
+
+    tenant_id = current_user.tenant_id
+    await set_tenant_context(db, tenant_id)
+
+    base_filter = [Document.tenant_id == tenant_id]
+    if doc_type:
+        if doc_type not in VALID_DOC_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": f"Invalid doc_type '{doc_type}'. Must be one of: {', '.join(sorted(VALID_DOC_TYPES))}",
+                    }
+                },
+            )
+        base_filter.append(Document.doc_type == doc_type)
+
+    count_stmt = select(func.count()).select_from(Document).where(*base_filter)
+    count_result = await db.execute(count_stmt)
+    total_records = count_result.scalar() or 0
+    total_pages = max(1, (total_records + page_size - 1) // page_size)
+
+    data_stmt = (
+        select(Document)
+        .where(*base_filter)
+        .order_by(desc(Document.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    result = await db.execute(data_stmt)
+    docs = result.scalars().all()
+
+    data = [
+        {
+            "document_id": str(doc.id),
+            "filename": doc.original_filename,
+            "doc_type": doc.doc_type,
+            "file_size": doc.file_size,
+            "parse_status": doc.parse_status,
+            "created_at": str(doc.created_at) if doc.created_at else None,
+        }
+        for doc in docs
+    ]
+
+    return {
+        "data": data,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_records": total_records,
+            "total_pages": total_pages,
+        },
+    }
+
+
 @router.get("/runs")
 async def list_runs(
     current_user: CurrentUser = Depends(get_current_user),

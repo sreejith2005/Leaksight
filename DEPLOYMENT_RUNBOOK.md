@@ -329,7 +329,36 @@ ssh leaksight@YOUR_SERVER_IPcd /opt/leaksight/app# 1. Load previous working vers
 
 ---
 
+## Tool A
+
+For deployments that include Tool A, apply the following operational settings:
+
+- Celery worker queue list must include `structuring`.
+
+```bash
+.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring
+```
+
+- On first deploy, download spaCy model:
+
+```bash
+.venv\Scripts\python.exe -m spacy download en_core_web_sm
+```
+
+- Memory note for Hetzner CX41 (16 GB RAM): spaCy + camelot + PaddleOCR can peak at 12-14 GB on large scanned contracts. Monitor with:
+
+```bash
+docker stats
+```
+
+- Recommended worker recycle for large scanned contract workloads:
+
+```bash
+--max-tasks-per-child=20
+```
+
 ## 12. Known Limitations (V1)
+
 
 These are documented, intentional scope restrictions. They are **not bugs**.
 

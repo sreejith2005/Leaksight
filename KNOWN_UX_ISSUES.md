@@ -93,6 +93,38 @@ This document tracks known UX limitations for transparency during pilot testing.
 
 ---
 
+## Tool A — Contract Structuring (V1.1 Scope)
+
+### 12. P1 — PDF with complex merged cells
+- **Behavior**: camelot may misread spanning cells.
+- **Fallback behavior**: affected rows are flagged as low confidence for manual review.
+
+### 13. P1 — Scanned contracts with handwritten annotations
+- **Behavior**: PaddleOCR is trained on printed text; handwriting causes garbled extraction output.
+- **Fallback behavior**: affected rows are flagged for review.
+
+### 14. P2 — No direct ERP API push
+- **Behavior**: by design in V1.1, Tool A produces export files and clients import manually.
+- **Scope note**: V2 planned: SAP BAPI and Tally API integration.
+
+### 15. P2 — Escalation clause extraction is approximate
+- **Behavior**: regex and keyword matching only; complex conditional escalations may be missed.
+- **Fallback behavior**: confidence below 0.7 forces manual review flag.
+
+### 16. P2 — Large contracts are slower by design
+- **Behavior**: 50-page batch processing adds latency.
+- **Scope note**: acceptable for quarterly contract renewal use.
+
+### 17. P3 — No ERP field mapping UI
+- **Behavior**: generic JSON/CSV schema; clients map fields to their ERP manually.
+- **Scope note**: V2 planned: ERP-specific mapping profiles.
+
+### 18. P3 — No AI/LLM-assisted extraction
+- **Behavior**: all extraction is rule-based (regex, spaCy NER, camelot).
+- **Scope note**: V2 optional enhancement: local LLM via Ollama for ambiguous clause classification.
+
+---
+
 ## How to Use This Document
 
 During the pilot demo, if an observer notices any issue:
