@@ -28,6 +28,9 @@ from backend.app.core.logging import get_logger
 from backend.app.core.security import CurrentUser, get_current_user
 from backend.app.core.tenant_context import set_tenant_context
 from backend.app.models.derived import AnalysisRun, DocumentHash
+from backend.app.models.contracts import Contract
+from backend.app.models.invoices import Invoice
+from backend.app.models.purchase_orders import PurchaseOrder
 from backend.app.models.raw import Document
 from backend.app.services import analysis_run_service
 from backend.app.tasks.parse_task import parse_document
@@ -176,6 +179,55 @@ async def upload_document(
         db.add(reupload_hash)
         await db.flush()
 
+        # If this document previously parsed but lacks normalized records,
+        # force a re-parse + normalize backfill to avoid zero-input runs.
+        needs_reprocess = False
+        if existing_doc.parse_status == "FAILED":
+            needs_reprocess = True
+        elif existing_doc.parse_status == "PARSED":
+            if existing_doc.doc_type == "INVOICE":
+                canonical_stmt = select(func.count()).select_from(Invoice).where(
+                    Invoice.tenant_id == tenant_id,
+                    Invoice.source_document_id == existing_doc.id,
+                )
+                canonical_count = (await db.execute(canonical_stmt)).scalar() or 0
+                needs_reprocess = canonical_count == 0
+            elif existing_doc.doc_type == "CONTRACT":
+                canonical_stmt = select(func.count()).select_from(Contract).where(
+                    Contract.tenant_id == tenant_id,
+                    Contract.source_document_id == existing_doc.id,
+                )
+                canonical_count = (await db.execute(canonical_stmt)).scalar() or 0
+                needs_reprocess = canonical_count == 0
+            elif existing_doc.doc_type == "PO":
+                canonical_stmt = select(func.count()).select_from(PurchaseOrder).where(
+                    PurchaseOrder.tenant_id == tenant_id,
+                    PurchaseOrder.source_document_id == existing_doc.id,
+                )
+                canonical_count = (await db.execute(canonical_stmt)).scalar() or 0
+                needs_reprocess = canonical_count == 0
+
+        if needs_reprocess:
+            existing_doc.parse_status = "PENDING"
+            await db.flush()
+            parse_document.delay(str(existing_doc.id), str(tenant_id))
+            logger.info(
+                "document_reupload_reprocess_queued",
+                document_id=str(existing_doc.id),
+                tenant_id=str(tenant_id),
+                doc_type=existing_doc.doc_type,
+            )
+            return {
+                "document_id": str(existing_doc.id),
+                "filename": existing_doc.original_filename,
+                "doc_type": existing_doc.doc_type,
+                "sha256_hash": existing_doc.sha256_hash,
+                "file_size": existing_doc.file_size,
+                "parse_status": "PENDING",
+                "created_at": str(existing_doc.created_at),
+                "note": "Document re-uploaded. Reprocessing queued to rebuild canonical records.",
+            }
+
         logger.info(
             "document_reupload_unchanged",
             document_id=str(existing_doc.id),
@@ -318,6 +370,39 @@ async def trigger_run(
                         "One or more document_ids do not belong to the "
                         "requesting tenant or do not exist"
                     ),
+                }
+            },
+        )
+
+    # ── Guard: all selected documents must be parse-complete ───────
+    docs_stmt = select(Document.id, Document.parse_status).where(
+        Document.id.in_(request.document_ids),
+        Document.tenant_id == tenant_id,
+    )
+    docs_result = await db.execute(docs_stmt)
+    docs = docs_result.fetchall()
+
+    not_ready_ids = [
+        str(row.id)
+        for row in docs
+        if str(row.parse_status) != "PARSED"
+    ]
+    if not_ready_ids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": {
+                    "code": "DOCUMENTS_NOT_READY",
+                    "message": (
+                        "One or more selected documents are still parsing. "
+                        "Wait for parse_status=PARSED, then trigger analysis again."
+                    ),
+                    "details": [
+                        {
+                            "field": "document_ids",
+                            "message": f"Not ready: {', '.join(not_ready_ids)}",
+                        }
+                    ],
                 }
             },
         )

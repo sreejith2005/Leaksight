@@ -15,7 +15,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.logging import get_logger
@@ -55,6 +55,13 @@ async def normalize_parse_result(
     if parse_result.parse_confidence == 0.0:
         logger.info("normalization_skipped", document_id=str(doc_id), reason="total_parse_failure")
         return NormalizationResult(document_id=doc_id, skipped=True, skip_reason="total_parse_failure")
+
+    await _delete_existing_canonical_for_document(
+        db=db,
+        tenant_id=tenant_id,
+        document_id=doc_id,
+        doc_type=parse_result.doc_type,
+    )
 
     # ── BATCH FORMAT PATH ─────────────────────────────────────────────
     raw_data = parse_result.raw_extracted_data or {}
@@ -174,6 +181,101 @@ async def normalize_parse_result(
     )
 
 
+async def _delete_existing_canonical_for_document(
+    db: AsyncSession,
+    tenant_id: UUID,
+    document_id: UUID,
+    doc_type: DocType,
+) -> None:
+    """Remove canonical rows tied to this document before rebuilding them.
+
+    Normalization can be retried for the same raw parse or re-triggered after a
+    repair. Without a document-scoped cleanup, contract and PO records are
+    duplicated and later analysis runs mix stale canonical rows into the run.
+    """
+    if doc_type == DocType.CONTRACT:
+        contract_ids = (
+            select(Contract.id)
+            .where(
+                Contract.tenant_id == tenant_id,
+                Contract.source_document_id == document_id,
+            )
+            .scalar_subquery()
+        )
+        version_ids = (
+            select(ContractVersion.id)
+            .where(
+                ContractVersion.tenant_id == tenant_id,
+                ContractVersion.contract_id.in_(contract_ids),
+            )
+            .scalar_subquery()
+        )
+        await db.execute(
+            delete(ContractLineItem).where(
+                ContractLineItem.tenant_id == tenant_id,
+                ContractLineItem.contract_version_id.in_(version_ids),
+            )
+        )
+        await db.execute(
+            delete(ContractVersion).where(
+                ContractVersion.tenant_id == tenant_id,
+                ContractVersion.contract_id.in_(contract_ids),
+            )
+        )
+        await db.execute(
+            delete(Contract).where(
+                Contract.tenant_id == tenant_id,
+                Contract.source_document_id == document_id,
+            )
+        )
+        return
+
+    if doc_type == DocType.PO:
+        po_ids = (
+            select(PurchaseOrder.id)
+            .where(
+                PurchaseOrder.tenant_id == tenant_id,
+                PurchaseOrder.source_document_id == document_id,
+            )
+            .scalar_subquery()
+        )
+        await db.execute(
+            delete(PoLineItem).where(
+                PoLineItem.tenant_id == tenant_id,
+                PoLineItem.po_id.in_(po_ids),
+            )
+        )
+        await db.execute(
+            delete(PurchaseOrder).where(
+                PurchaseOrder.tenant_id == tenant_id,
+                PurchaseOrder.source_document_id == document_id,
+            )
+        )
+        return
+
+    if doc_type == DocType.INVOICE:
+        invoice_ids = (
+            select(Invoice.id)
+            .where(
+                Invoice.tenant_id == tenant_id,
+                Invoice.source_document_id == document_id,
+            )
+            .scalar_subquery()
+        )
+        await db.execute(
+            delete(InvoiceLineItem).where(
+                InvoiceLineItem.tenant_id == tenant_id,
+                InvoiceLineItem.invoice_id.in_(invoice_ids),
+            )
+        )
+        await db.execute(
+            delete(Invoice).where(
+                Invoice.tenant_id == tenant_id,
+                Invoice.source_document_id == document_id,
+            )
+        )
+
+
 # ── BATCH INVOICE PROCESSING ──────────────────────────────────────────
 
 async def _process_invoice_batch(
@@ -232,17 +334,48 @@ async def _process_invoice_batch(
             if r.get("unit_price") is not None and r.get("quantity") is not None
         )
 
-        invoice = Invoice(
-            tenant_id=tenant_id,
-            vendor_id=vendor_id,
-            invoice_no=inv_no if not inv_no.startswith("__row_") else "",
-            invoice_date=inv_date,
-            total_amount=total,
-            currency=currency,
-            source_document_id=document_id,
-        )
-        db.add(invoice)
-        await db.flush()
+        stored_invoice_no = inv_no if not inv_no.startswith("__row_") else ""
+
+        # Idempotency: if invoice_no already exists for this tenant,
+        # refresh it instead of failing on unique constraint.
+        existing_invoice = None
+        if stored_invoice_no:
+            existing_stmt = select(Invoice).where(
+                Invoice.tenant_id == tenant_id,
+                Invoice.invoice_no == stored_invoice_no,
+            )
+            existing_result = await db.execute(existing_stmt)
+            existing_invoice = existing_result.scalar_one_or_none()
+
+        if existing_invoice is not None:
+            invoice = existing_invoice
+            # Keep existing invoice/line-item history intact; only relink
+            # source document so analysis_run can include this invoice.
+            invoice.source_document_id = document_id
+            await db.flush()
+
+            existing_li_stmt = select(func.count()).select_from(InvoiceLineItem).where(
+                InvoiceLineItem.invoice_id == invoice.id,
+                InvoiceLineItem.tenant_id == tenant_id,
+            )
+            existing_li_count = (await db.execute(existing_li_stmt)).scalar() or 0
+
+            # If line items already exist, keep them and avoid duplicates.
+            if existing_li_count > 0:
+                invoices_created += 1
+                continue
+        else:
+            invoice = Invoice(
+                tenant_id=tenant_id,
+                vendor_id=vendor_id,
+                invoice_no=stored_invoice_no,
+                invoice_date=inv_date,
+                total_amount=total,
+                currency=currency,
+                source_document_id=document_id,
+            )
+            db.add(invoice)
+            await db.flush()
 
         # Create line items
         for row in rows:
@@ -256,6 +389,7 @@ async def _process_invoice_batch(
                 tenant_id=tenant_id,
                 item_desc=norm_desc,
                 raw_item_desc=raw_desc,
+                contract_ref=(row.get("contract_id") or None),
                 quantity=qty,
                 unit=row.get("unit") or "",
                 unit_price=price,
@@ -363,6 +497,10 @@ async def _process_contract_batch(
                 tenant_id=tenant_id,
                 item_desc=norm_desc,
                 raw_item_desc=raw_desc,
+                contract_quantity=(
+                    Decimal(str(row["quantity"]))
+                    if row.get("quantity") is not None else None
+                ),
                 unit=row.get("unit") or "",
                 unit_price=price,
                 currency=currency,

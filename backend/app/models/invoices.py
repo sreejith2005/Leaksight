@@ -69,6 +69,7 @@ class InvoiceLineItem(Base):
     tenant_id = Column(UUID(as_uuid=True), nullable=False)
     item_desc = Column(Text, nullable=False)
     raw_item_desc = Column(Text, nullable=False)
+    contract_ref = Column(Text, nullable=True)
     quantity = Column(Numeric(20, 6), nullable=False)
     unit = Column(Text, nullable=False)
     unit_price = Column(Numeric(20, 6), nullable=False)

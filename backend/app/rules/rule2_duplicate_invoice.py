@@ -9,8 +9,7 @@ level, not per line item. Called once per invoice in the analysis run.
 Leakage type: DUPLICATE_INVOICE.
 """
 
-from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
@@ -21,6 +20,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.models.invoices import Invoice, InvoiceLineItem
 from backend.app.models.tenant import TenantSettings
 from backend.app.rules.rule1_price_mismatch import RuleResult
+
+
+def _invoice_sort_key(invoice) -> tuple:
+    created_at = getattr(invoice, "created_at", None)
+    if not isinstance(created_at, datetime):
+        created_at = datetime.min
+    invoice_no = getattr(invoice, "invoice_no", "") or ""
+    invoice_id = str(getattr(invoice, "id", ""))
+    return (created_at, invoice_no, invoice_id)
+
+
+def _prior_candidates(candidates: list, invoice) -> list:
+    current_key = _invoice_sort_key(invoice)
+    prior = [candidate for candidate in candidates if _invoice_sort_key(candidate) < current_key]
+    prior.sort(key=_invoice_sort_key)
+    return prior
 
 
 async def _get_duplicate_window_days(tenant_id: UUID, db: AsyncSession) -> int:
@@ -54,12 +69,13 @@ async def evaluate(
             Invoice.vendor_id == invoice.vendor_id,
             Invoice.id != invoice.id,
         )
-        .order_by(Invoice.id.asc())
+        .order_by(Invoice.created_at.asc(), Invoice.invoice_no.asc(), Invoice.id.asc())
     )
     exact_result = await db.execute(exact_stmt)
-    exact_dupes = list(exact_result.scalars().all())
+    exact_dupes = _prior_candidates(list(exact_result.scalars().all()), invoice)
 
-    for dupe in exact_dupes:
+    if exact_dupes:
+        dupe = exact_dupes[0]
         temporal_distance = abs((invoice.invoice_date - dupe.invoice_date).days)
         explanation = (
             f"Invoice {invoice.invoice_no} from {vendor_name} for "
@@ -115,16 +131,12 @@ async def evaluate(
             Invoice.total_amount == invoice.total_amount,
             Invoice.invoice_date >= date_start,
             Invoice.invoice_date <= date_end,
-            # Using < instead of != prevents counting each duplicate pair twice.
-            # (A,B) and (B,A) would both match with !=. With <, only the pair where
-            # A.id < B.id matches, ensuring each duplicate pair produces exactly one record.
-            Invoice.id < invoice.id,
             Invoice.invoice_no != invoice.invoice_no,
         )
-        .order_by(Invoice.id.asc())
+        .order_by(Invoice.created_at.asc(), Invoice.invoice_no.asc(), Invoice.id.asc())
     )
     near_result = await db.execute(near_stmt)
-    near_dupes = list(near_result.scalars().all())
+    near_dupes = _prior_candidates(list(near_result.scalars().all()), invoice)
 
     # ── Step 2b: Filter near-duplicates by matching item descriptions ──
     # Only consider a near-duplicate valid if at least one line item
@@ -153,7 +165,8 @@ async def evaluate(
 
         near_dupes = filtered_dupes
 
-    for dupe in near_dupes:
+    if near_dupes:
+        dupe = near_dupes[0]
         temporal_distance = abs((invoice.invoice_date - dupe.invoice_date).days)
         explanation = (
             f"Invoice {invoice.invoice_no} from {vendor_name} for "

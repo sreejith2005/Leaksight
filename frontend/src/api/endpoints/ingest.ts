@@ -17,6 +17,19 @@ export function triggerRun(documentIds: string[]): Promise<TriggerRunResponse> {
   return apiPost<TriggerRunResponse>('/ingest/trigger-run', { document_ids: documentIds });
 }
 
+export function listDocuments(params?: {
+  page?: number;
+  page_size?: number;
+  doc_type?: string;
+}): Promise<PaginatedResponse<UploadResponse>> {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.page_size) searchParams.set('page_size', String(params.page_size));
+  if (params?.doc_type) searchParams.set('doc_type', params.doc_type);
+  const qs = searchParams.toString();
+  return apiGet<PaginatedResponse<UploadResponse>>(`/ingest/documents${qs ? `?${qs}` : ''}`);
+}
+
 export function getRunStatus(runId: string): Promise<RunStatusResponse> {
   return apiGet<RunStatusResponse>(`/ingest/runs/${runId}/status`);
 }

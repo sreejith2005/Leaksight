@@ -86,16 +86,21 @@ async function request<T>(
 
   // Handle non-2xx responses
   if (!response.ok) {
-    let errorBody: APIErrorBody | null = null;
+    let errorPayload: unknown = null;
     try {
-      errorBody = await response.json();
+      errorPayload = await response.json();
     } catch {
       // Response body not JSON
     }
 
-    const code = errorBody?.error?.code || 'UNKNOWN_ERROR';
-    const message = errorBody?.error?.message || `Request failed with status ${response.status}`;
-    const details = errorBody?.error?.details;
+    const errorBody = errorPayload as Partial<APIErrorBody> & {
+      detail?: Partial<APIErrorBody>;
+    };
+    const errorNode = errorBody?.error || errorBody?.detail?.error;
+
+    const code = errorNode?.code || 'UNKNOWN_ERROR';
+    const message = errorNode?.message || `Request failed with status ${response.status}`;
+    const details = errorNode?.details;
 
     throw new APIError(response.status, code, message, details);
   }
@@ -157,15 +162,20 @@ export async function apiDownloadFile(path: string, filename: string): Promise<v
   }
 
   if (!response.ok) {
-    let errorBody: APIErrorBody | null = null;
+    let errorPayload: unknown = null;
     try {
-      errorBody = await response.json();
+      errorPayload = await response.json();
     } catch {
       // Binary response, can't parse JSON
     }
 
-    const code = errorBody?.error?.code || 'DOWNLOAD_FAILED';
-    const message = errorBody?.error?.message || `Download failed with status ${response.status}`;
+    const errorBody = errorPayload as Partial<APIErrorBody> & {
+      detail?: Partial<APIErrorBody>;
+    };
+    const errorNode = errorBody?.error || errorBody?.detail?.error;
+
+    const code = errorNode?.code || 'DOWNLOAD_FAILED';
+    const message = errorNode?.message || `Download failed with status ${response.status}`;
     throw new APIError(response.status, code, message);
   }
 

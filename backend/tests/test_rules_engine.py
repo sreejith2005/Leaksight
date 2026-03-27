@@ -24,7 +24,7 @@ Tests cover:
     13. Rule 2 only runs once per invoice
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -56,6 +56,7 @@ def _make_invoice(**overrides):
     inv.vendor_id = overrides.get("vendor_id", VENDOR_ID)
     inv.invoice_no = overrides.get("invoice_no", "INV-001")
     inv.invoice_date = overrides.get("invoice_date", date(2024, 6, 15))
+    inv.created_at = overrides.get("created_at", datetime(2024, 6, 15, 12, 0, 0))
     inv.total_amount = overrides.get("total_amount", Decimal("50000"))
     inv.currency = overrides.get("currency", "INR")
     return inv
@@ -246,7 +247,11 @@ async def test_rule1_zero_quantity_skips():
 @pytest.mark.asyncio
 async def test_rule2_exact_duplicate():
     """Exact duplicate found → confidence 1.0."""
-    dupe = _make_invoice(id=uuid4(), invoice_no="INV-001")
+    dupe = _make_invoice(
+        id=uuid4(),
+        invoice_no="INV-001",
+        created_at=datetime(2024, 6, 14, 9, 0, 0),
+    )
 
     db = AsyncMock()
 
@@ -274,6 +279,7 @@ async def test_rule2_near_duplicate():
         id=uuid4(),
         invoice_no="INV-002",
         invoice_date=date(2024, 6, 20),
+        created_at=datetime(2024, 6, 14, 9, 0, 0),
     )
 
     db = AsyncMock()
@@ -307,7 +313,7 @@ async def test_rule2_near_duplicate():
                      src_li_result_mock, dupe_li_result_mock]
     )
 
-    invoice = _make_invoice()
+    invoice = _make_invoice(created_at=datetime(2024, 6, 15, 9, 0, 0))
     results = await rule2_evaluate(invoice, "Vendor A", TENANT_ID, RUN_ID, db)
 
     assert len(results) == 1
@@ -491,6 +497,124 @@ async def test_rule3_no_grn_no_po_skips():
         line_item, invoice, "Vendor A", TENANT_ID, RUN_ID, db
     )
     assert result is None
+
+
+@pytest.mark.asyncio
+@patch("backend.app.rules.rule3_quantity_mismatch.get_valid_contract_version")
+async def test_rule3_contract_fallback(mock_contract):
+    """No GRN/PO but contract_ref + contract quantity available -> leakage detected."""
+    from backend.app.core.contract_resolver import (
+        ContractResolutionResult,
+        ContractResolutionStatus,
+    )
+
+    contract_version = _make_contract_version()
+    mock_contract.return_value = ContractResolutionResult(
+        status=ContractResolutionStatus.FOUND,
+        versions=[contract_version],
+    )
+
+    contract_line_item = MagicMock()
+    contract_line_item.item_desc = "cement 43 grade"
+    contract_line_item.contract_quantity = Decimal("80")
+
+    db = AsyncMock()
+
+    settings_mock = MagicMock()
+    settings_mock.scalar_one_or_none.return_value = None
+
+    po_result = MagicMock()
+    po_scalars = MagicMock()
+    po_scalars.all.return_value = []
+    po_result.scalars.return_value = po_scalars
+
+    contract_li_result = MagicMock()
+    contract_li_scalars = MagicMock()
+    contract_li_scalars.all.return_value = [contract_line_item]
+    contract_li_result.scalars.return_value = contract_li_scalars
+
+    db.execute = AsyncMock(side_effect=[settings_mock, po_result, contract_li_result])
+
+    invoice = _make_invoice(created_at=datetime(2024, 6, 15, 9, 0, 0))
+    line_item = _make_line_item(
+        quantity=Decimal("100"),
+        unit_price=Decimal("500"),
+    )
+    line_item.contract_ref = "CTR-001"
+
+    result = await rule3_evaluate(
+        line_item, invoice, "Vendor A", TENANT_ID, RUN_ID, db
+    )
+
+    assert result is not None
+    assert result.leakage_type == "QUANTITY_MISMATCH"
+    assert result.amount == Decimal("10000")
+    assert result.evidence_jsonb["quantity_reference"]["authority_used"] == "CONTRACT"
+    assert "contract quantity used as authority" in result.explanation.lower()
+
+
+@pytest.mark.asyncio
+async def test_rule2_near_duplicate_returns_single_result_for_multiple_prior_matches():
+    """One invoice should emit one duplicate finding even if multiple prior matches exist."""
+    first_dupe = _make_invoice(
+        id=uuid4(),
+        invoice_no="INV-001A",
+        invoice_date=date(2024, 6, 10),
+        created_at=datetime(2024, 6, 10, 9, 0, 0),
+    )
+    second_dupe = _make_invoice(
+        id=uuid4(),
+        invoice_no="INV-001B",
+        invoice_date=date(2024, 6, 12),
+        created_at=datetime(2024, 6, 12, 9, 0, 0),
+    )
+
+    db = AsyncMock()
+
+    exact_result_mock = MagicMock()
+    exact_scalars = MagicMock()
+    exact_scalars.all.return_value = []
+    exact_result_mock.scalars.return_value = exact_scalars
+
+    settings_mock = MagicMock()
+    settings_mock.scalar_one_or_none.return_value = None
+
+    near_result_mock = MagicMock()
+    near_scalars = MagicMock()
+    near_scalars.all.return_value = [first_dupe, second_dupe]
+    near_result_mock.scalars.return_value = near_scalars
+
+    src_li_result_mock = MagicMock()
+    src_li_result_mock.fetchall.return_value = [("cement 43 grade",)]
+
+    first_dupe_li_result = MagicMock()
+    first_dupe_li_result.fetchall.return_value = [("cement 43 grade",)]
+
+    second_dupe_li_result = MagicMock()
+    second_dupe_li_result.fetchall.return_value = [("cement 43 grade",)]
+
+    db.execute = AsyncMock(
+        side_effect=[
+            exact_result_mock,
+            settings_mock,
+            near_result_mock,
+            src_li_result_mock,
+            first_dupe_li_result,
+            second_dupe_li_result,
+        ]
+    )
+
+    invoice = _make_invoice(
+        invoice_no="INV-001C",
+        created_at=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    results = await rule2_evaluate(invoice, "Vendor A", TENANT_ID, RUN_ID, db)
+
+    assert len(results) == 1
+    assert (
+        results[0].evidence_jsonb["duplicate_reference"]["original_invoice_no"]
+        == "INV-001A"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════

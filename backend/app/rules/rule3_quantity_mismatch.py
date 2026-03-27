@@ -1,24 +1,29 @@
 """
-LeakSight V1 — Rule 3: Quantity Mismatch
+LeakSight V1 - Rule 3: Quantity Mismatch
 
 Source: docs/RULES_ENGINE.md (Section 5)
 
 Detects when an invoice claims a higher quantity than what was actually
-received (GRN) or ordered (PO). Authority hierarchy: GRN > PO > Nothing.
+received (GRN) or ordered (PO). When neither exists, the uploaded contract
+quantity is used as the last fallback authority for batch workbook data.
 
 Leakage type: QUANTITY_MISMATCH.
 """
 
 from decimal import Decimal, ROUND_HALF_UP
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
 from rapidfuzz.fuzz import token_sort_ratio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.core.contract_resolver import (
+    ContractResolutionStatus,
+    get_valid_contract_version,
+)
+from backend.app.models.contracts import ContractLineItem
 from backend.app.models.grns import Grn, GrnLineItem
-from backend.app.models.invoices import Invoice
 from backend.app.models.purchase_orders import PurchaseOrder, PoLineItem
 from backend.app.models.tenant import TenantSettings
 from backend.app.rules.rule1_price_mismatch import RuleResult
@@ -38,16 +43,11 @@ def _best_item_match(
     desc_attr: str,
     fuzzy_threshold: float,
 ) -> tuple:
-    """Find the best matching item from candidates by description.
-
-    Returns (matched_item, confidence, method) or (None, 0.0, "NONE").
-    """
-    # Exact match first
+    """Find the best matching item from candidates by description."""
     for item in candidates:
         if getattr(item, desc_attr) == target_desc:
             return item, 1.0, "EXACT"
 
-    # Fuzzy match
     best = None
     best_score = 0.0
     for item in candidates:
@@ -62,6 +62,51 @@ def _best_item_match(
     return None, 0.0, "NONE"
 
 
+async def _resolve_contract_authority(
+    invoice_line_item,
+    invoice,
+    tenant_id: UUID,
+    fuzzy_threshold: float,
+    db: AsyncSession,
+) -> tuple:
+    """Resolve contract line item quantity when PO/GRN data is absent."""
+    contract_ref = getattr(invoice_line_item, "contract_ref", None)
+    if not isinstance(contract_ref, str) or not contract_ref.strip():
+        return None, 0.0, "NONE"
+
+    contract_result = await get_valid_contract_version(
+        vendor_id=invoice.vendor_id,
+        invoice_date=invoice.invoice_date,
+        tenant_id=tenant_id,
+        db=db,
+        contract_ref=contract_ref,
+    )
+    if contract_result.status == ContractResolutionStatus.NONE:
+        return None, 0.0, "NONE"
+
+    contract_version = contract_result.versions[0]
+    stmt = select(ContractLineItem).where(
+        ContractLineItem.contract_version_id == contract_version.id,
+        ContractLineItem.tenant_id == tenant_id,
+    ).order_by(ContractLineItem.id.asc())
+    result = await db.execute(stmt)
+    contract_line_items = list(result.scalars().all())
+
+    if not contract_line_items:
+        return None, 0.0, "NONE"
+
+    matched, confidence, method = _best_item_match(
+        invoice_line_item.item_desc,
+        contract_line_items,
+        "item_desc",
+        fuzzy_threshold,
+    )
+    if matched is None or matched.contract_quantity is None:
+        return None, 0.0, "NONE"
+
+    return matched, confidence, method
+
+
 async def evaluate(
     invoice_line_item,
     invoice,
@@ -70,30 +115,17 @@ async def evaluate(
     run_id: UUID,
     db: AsyncSession,
 ) -> Optional[RuleResult]:
-    """Evaluate Rule 3 for a single invoice line item.
-
-    Returns a RuleResult if quantity leakage detected, None if clean/skipped.
-
-    Edge cases:
-    - Zero quantity → skip
-    - Negative amount → skip
-    - No GRN and no PO → skip (no false positive)
-    """
-    # Edge cases
+    """Evaluate Rule 3 for a single invoice line item."""
     if invoice_line_item.quantity <= 0 or invoice_line_item.unit_price < 0:
         return None
 
     fuzzy_threshold = await _get_fuzzy_threshold(tenant_id, db)
 
-    # ── Step 1: Find matching GRN ──────────────────────────────────────
-    # GRNs are linked to POs from the same vendor:
-    #   grns.po_id → purchase_orders.vendor_id = invoice.vendor_id
     grn_line_item = None
     grn_header = None
     grn_confidence = 0.0
     grn_method = "NONE"
 
-    # Find POs for this vendor
     po_stmt = select(PurchaseOrder).where(
         PurchaseOrder.vendor_id == invoice.vendor_id,
         PurchaseOrder.tenant_id == tenant_id,
@@ -103,8 +135,6 @@ async def evaluate(
 
     if vendor_pos:
         po_ids = [po.id for po in vendor_pos]
-
-        # Find GRNs linked to those POs
         grn_stmt = select(Grn).where(
             Grn.po_id.in_(po_ids),
             Grn.tenant_id == tenant_id,
@@ -114,8 +144,6 @@ async def evaluate(
 
         if grns:
             grn_ids = [g.id for g in grns]
-
-            # Find GRN line items
             gli_stmt = select(GrnLineItem).where(
                 GrnLineItem.grn_id.in_(grn_ids),
                 GrnLineItem.tenant_id == tenant_id,
@@ -134,20 +162,17 @@ async def evaluate(
                     grn_line_item = matched
                     grn_confidence = conf
                     grn_method = method
-                    # Find the parent GRN header for reporting
-                    for g in grns:
-                        if g.id == matched.grn_id:
-                            grn_header = g
+                    for grn in grns:
+                        if grn.id == matched.grn_id:
+                            grn_header = grn
                             break
 
-    # ── Step 2: Determine authority ────────────────────────────────────
     po_line_item = None
     po_header = None
     po_confidence = 0.0
     po_method = "NONE"
 
     if grn_line_item is None and vendor_pos:
-        # No GRN match — try PO fallback
         po_ids = [po.id for po in vendor_pos]
         pli_stmt = select(PoLineItem).where(
             PoLineItem.po_id.in_(po_ids),
@@ -172,56 +197,68 @@ async def evaluate(
                         po_header = po
                         break
 
-    # No GRN and no PO match → skip
+    contract_line_item = None
+    contract_confidence = 0.0
+    contract_method = "NONE"
     if grn_line_item is None and po_line_item is None:
+        contract_line_item, contract_confidence, contract_method = (
+            await _resolve_contract_authority(
+                invoice_line_item=invoice_line_item,
+                invoice=invoice,
+                tenant_id=tenant_id,
+                fuzzy_threshold=fuzzy_threshold,
+                db=db,
+            )
+        )
+
+    if grn_line_item is None and po_line_item is None and contract_line_item is None:
         return None
 
-    # ── Step 3: Quantity comparison ────────────────────────────────────
     invoice_qty = Decimal(str(invoice_line_item.quantity))
     unit_price = Decimal(str(invoice_line_item.unit_price))
 
     if grn_line_item is not None:
-        # GRN authority
         authority_qty = Decimal(str(grn_line_item.received_qty))
         authority_used = "GRN"
         item_confidence = grn_confidence
         item_method = grn_method
-    else:
-        # PO fallback
+    elif po_line_item is not None:
         authority_qty = Decimal(str(po_line_item.ordered_qty))
         authority_used = "PO"
         item_confidence = po_confidence
         item_method = po_method
+    else:
+        authority_qty = Decimal(str(contract_line_item.contract_quantity))
+        authority_used = "CONTRACT"
+        item_confidence = contract_confidence
+        item_method = contract_method
 
     quantity_difference = invoice_qty - authority_qty
-
     if quantity_difference <= 0:
-        return None  # Invoice qty at or below authority qty — clean
+        return None
 
-    # ── Step 4: Leakage amount ─────────────────────────────────────────
     leakage_amount = (quantity_difference * unit_price).quantize(
-        Decimal('0.01'), rounding=ROUND_HALF_UP
+        Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
-    # ── Step 5: Confidence ─────────────────────────────────────────────
     if authority_used == "GRN":
-        if item_method == "EXACT":
-            confidence = 1.0
-        else:
-            confidence = item_confidence
-    else:  # PO
-        if item_method == "EXACT":
-            confidence = 0.90
-        else:
-            confidence = min(0.90, item_confidence)
+        confidence = 1.0 if item_method == "EXACT" else item_confidence
+    elif authority_used == "PO":
+        confidence = 0.90 if item_method == "EXACT" else min(0.90, item_confidence)
+    else:
+        confidence = 0.95 if item_method == "EXACT" else min(0.95, item_confidence)
 
-    # ── Step 6: Evidence ───────────────────────────────────────────────
     evidence = {
         "quantity_reference": {
             "po_id": str(po_header.id) if po_header else None,
             "po_quantity": str(po_line_item.ordered_qty) if po_line_item else None,
             "grn_id": str(grn_header.id) if grn_header else None,
             "grn_quantity": str(grn_line_item.received_qty) if grn_line_item else None,
+            "contract_id": getattr(invoice_line_item, "contract_ref", None),
+            "contract_quantity": (
+                str(contract_line_item.contract_quantity)
+                if contract_line_item and contract_line_item.contract_quantity is not None else None
+            ),
             "invoiced_quantity": str(invoice_qty),
             "authority_used": authority_used,
             "quantity_difference": str(quantity_difference),
@@ -248,7 +285,6 @@ async def evaluate(
         },
     }
 
-    # ── Step 7: Explanation ────────────────────────────────────────────
     if authority_used == "GRN":
         explanation = (
             f"Invoice {invoice.invoice_no} from {vendor_name} claims "
@@ -257,10 +293,10 @@ async def evaluate(
             f"(received on {grn_header.grn_date}) records only "
             f"{authority_qty} {invoice_line_item.unit} received. "
             f"Over-invoiced by {quantity_difference} "
-            f"{invoice_line_item.unit} \u00d7 "
-            f"\u20b9{unit_price} = \u20b9{leakage_amount}."
+            f"{invoice_line_item.unit} x "
+            f"₹{unit_price} = ₹{leakage_amount}."
         )
-    else:
+    elif authority_used == "PO":
         explanation = (
             f"Invoice {invoice.invoice_no} from {vendor_name} claims "
             f"{invoice_qty} {invoice_line_item.unit} of "
@@ -268,9 +304,20 @@ async def evaluate(
             f"({po_header.po_no}) only authorized "
             f"{authority_qty} {invoice_line_item.unit}. "
             f"No GRN available to confirm receipt. Over-invoiced by "
-            f"{quantity_difference} {invoice_line_item.unit} \u00d7 "
-            f"\u20b9{unit_price} = \u20b9{leakage_amount}. "
+            f"{quantity_difference} {invoice_line_item.unit} x "
+            f"₹{unit_price} = ₹{leakage_amount}. "
             f"Note: PO used as authority because no GRN found."
+        )
+    else:
+        explanation = (
+            f"Invoice {invoice.invoice_no} from {vendor_name} claims "
+            f"{invoice_qty} {invoice_line_item.unit} of "
+            f"'{invoice_line_item.item_desc}' but the referenced contract "
+            f"({invoice_line_item.contract_ref}) only authorizes "
+            f"{authority_qty} {invoice_line_item.unit}. Over-invoiced by "
+            f"{quantity_difference} {invoice_line_item.unit} x "
+            f"₹{unit_price} = ₹{leakage_amount}. "
+            f"Note: contract quantity used as authority because no GRN or PO matched."
         )
 
     return RuleResult(

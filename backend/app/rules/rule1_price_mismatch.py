@@ -206,11 +206,16 @@ async def evaluate(
         return None
 
     # ── Step 1: Contract Validity Check ────────────────────────────────
+    contract_ref = getattr(invoice_line_item, "contract_ref", None)
+    if not isinstance(contract_ref, str) or not contract_ref.strip():
+        contract_ref = None
+
     contract_result = await get_valid_contract_version(
         vendor_id=invoice.vendor_id,
         invoice_date=invoice.invoice_date,
         tenant_id=tenant_id,
         db=db,
+        contract_ref=contract_ref,
     )
 
     if contract_result.status == ContractResolutionStatus.NONE:
@@ -365,6 +370,7 @@ async def evaluate(
                         "currency": invoice_currency,
                     },
                     "contract_reference": {
+                        "contract_id": contract_ref,
                         "contract_line_item_id": str(matched_cli.id),
                         "item_desc": matched_cli.item_desc,
                         "unit_price": str(matched_cli.unit_price),
@@ -426,6 +432,7 @@ async def evaluate(
             "currency": invoice_currency,
         },
         "contract_reference": {
+            "contract_id": contract_ref,
             "contract_line_item_id": str(matched_cli.id),
             "item_desc": matched_cli.item_desc,
             "unit_price": str(contract_unit_price),

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { uploadDocument, triggerRun, getRunStatus, listRuns } from '../api/endpoints/ingest';
+import { uploadDocument, triggerRun, getRunStatus, listRuns, listDocuments } from '../api/endpoints/ingest';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { StatusBadge } from '../components/ui/StatusBadge';
@@ -28,6 +28,7 @@ export default function UploadPage() {
   const [uploadedDocs, setUploadedDocs] = useState<UploadResponse[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const allDocsParsed = uploadedDocs.length > 0 && uploadedDocs.every((d) => d.parse_status === 'PARSED');
 
   /* ── Upload mutation ─────────────────────────────────────────── */
   const uploadMutation = useMutation({
@@ -82,6 +83,31 @@ export default function UploadPage() {
       queryClient.invalidateQueries({ queryKey: ['runs'] });
     }
   }, [runStatus?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Poll uploaded document parse statuses ───────────────────── */
+  const { data: docsStatus } = useQuery({
+    queryKey: ['documents', { page: 1, page_size: 200 }],
+    queryFn: () => listDocuments({ page: 1, page_size: 200 }),
+    enabled: uploadedDocs.length > 0,
+    refetchInterval: allDocsParsed ? false : 2000,
+  });
+
+  React.useEffect(() => {
+    if (!docsStatus?.data?.length || uploadedDocs.length === 0) return;
+
+    const statusById = new Map(docsStatus.data.map((d) => [d.document_id, d.parse_status]));
+
+    setUploadedDocs((prev) => {
+      let changed = false;
+      const next = prev.map((doc) => {
+        const latestStatus = statusById.get(doc.document_id);
+        if (!latestStatus || latestStatus === doc.parse_status) return doc;
+        changed = true;
+        return { ...doc, parse_status: latestStatus };
+      });
+      return changed ? next : prev;
+    });
+  }, [docsStatus, uploadedDocs.length]);
 
   /* ── Recent runs ─────────────────────────────────────────────── */
   const { data: recentRuns, isLoading: runsLoading } = useQuery({
@@ -231,11 +257,16 @@ export default function UploadPage() {
             <Button
               onClick={() => triggerMutation.mutate()}
               loading={triggerMutation.isPending}
-              disabled={uploadedDocs.length === 0}
+              disabled={uploadedDocs.length === 0 || !allDocsParsed}
             >
               Trigger Analysis Run
             </Button>
           </div>
+          {!allDocsParsed && (
+            <p style={{ marginBottom: 'var(--space-4)', fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--color-warning)' }}>
+              Documents are still being parsed. Trigger analysis after all selected files show PARSED.
+            </p>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
             {uploadedDocs.map((doc) => (
               <div
@@ -250,7 +281,12 @@ export default function UploadPage() {
                 }}
               >
                 <span style={{ fontFamily: 'var(--font-body)', color: 'var(--text-primary)', fontSize: 'var(--text-sm)' }}>{doc.filename}</span>
-                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>{doc.doc_type}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>{doc.doc_type}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: doc.parse_status === 'PARSED' ? 'var(--color-success)' : 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
+                    {doc.parse_status}
+                  </span>
+                </div>
               </div>
             ))}
           </div>

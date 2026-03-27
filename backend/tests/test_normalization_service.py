@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from backend.app.matching.vendor_matcher import MatchMethod, VendorMatchResult
+from backend.app.models.contracts import ContractLineItem
 from backend.app.models.invoices import Invoice, InvoiceLineItem
 from backend.app.parsers.base_parser import (
     DocType,
@@ -34,9 +35,12 @@ from backend.app.parsers.base_parser import (
 )
 from backend.app.services.normalization_service import (
     NormalizationResult,
+    _delete_existing_canonical_for_document,
     _auto_create_vendor,
     _create_invoice,
     _create_line_items,
+    _process_contract_batch,
+    _process_invoice_batch,
     _safe_decimal,
     _update_vendor_raw_names,
     normalize_parse_result,
@@ -704,3 +708,243 @@ class TestFullPipelineIntegration:
         assert result.vendor_match_method == "AUTO_CREATED"
         assert result.vendor_id == VENDOR_ID
         assert result.line_items_created == 2
+
+
+class TestBatchInvoiceNormalization:
+    """Batch invoice path should tolerate duplicate invoice_no rows."""
+
+    @pytest.mark.asyncio
+    async def test_duplicate_invoice_no_reuses_existing_invoice(self):
+        db = _mock_db()
+
+        existing_invoice = Invoice(
+            id=INVOICE_ID,
+            tenant_id=TENANT_ID,
+            vendor_id=uuid4(),
+            invoice_no="INV-DUP-001",
+            invoice_date=date(2024, 1, 1),
+            total_amount=Decimal("1"),
+            currency="INR",
+            source_document_id=uuid4(),
+        )
+
+        # execute() calls in _process_invoice_batch:
+        # 1) existing invoice lookup by tenant_id + invoice_no
+        # 2) existing line-item count for that invoice
+        existing_lookup = MagicMock()
+        existing_lookup.scalar_one_or_none.return_value = existing_invoice
+        li_count_result = MagicMock()
+        li_count_result.scalar.return_value = 1
+        db.execute.side_effect = [existing_lookup, li_count_result]
+
+        added_objects = []
+        db.add.side_effect = lambda obj: added_objects.append(obj)
+
+        batch_rows = [
+            {
+                "invoice_no": "INV-DUP-001",
+                "invoice_date": "2024-01-15",
+                "vendor_name": "Acme Pvt Ltd",
+                "currency": "USD",
+                "item_desc": "Cloud Hosting",
+                "quantity": 2,
+                "unit": "Month",
+                "unit_price": 100,
+            }
+        ]
+
+        mock_item_normalizer = MagicMock()
+        mock_item_normalizer.normalize_item_desc.side_effect = lambda x: x.lower()
+
+        with patch(
+            "backend.app.services.normalization_service._resolve_or_create_vendor",
+            new_callable=AsyncMock,
+            return_value=VENDOR_ID,
+        ):
+            invoices_created, line_items_created = await _process_invoice_batch(
+                db=db,
+                batch_rows=batch_rows,
+                tenant_id=TENANT_ID,
+                item_normalizer=mock_item_normalizer,
+                document_id=DOC_ID,
+            )
+
+        assert invoices_created == 1
+        assert line_items_created == 0
+
+        # Existing invoice reused and relinked to current document
+        assert existing_invoice.source_document_id == DOC_ID
+
+        # No new invoice object should be added
+        assert len([o for o in added_objects if isinstance(o, Invoice)]) == 0
+        assert len([o for o in added_objects if isinstance(o, InvoiceLineItem)]) == 0
+
+    @pytest.mark.asyncio
+    async def test_batch_invoice_stores_contract_ref_on_line_items(self):
+        db = _mock_db()
+        added_objects = []
+        db.add.side_effect = lambda obj: added_objects.append(obj)
+        existing_lookup = MagicMock()
+        existing_lookup.scalar_one_or_none.return_value = None
+        db.execute.side_effect = [existing_lookup]
+
+        batch_rows = [
+            {
+                "invoice_no": "INV-REF-001",
+                "contract_id": "CTR-001",
+                "invoice_date": "2024-01-15",
+                "vendor_name": "Acme Pvt Ltd",
+                "currency": "USD",
+                "item_desc": "Cloud Hosting",
+                "quantity": 2,
+                "unit": "Month",
+                "unit_price": 100,
+            }
+        ]
+
+        mock_item_normalizer = MagicMock()
+        mock_item_normalizer.normalize_item_desc.side_effect = lambda x: x.lower()
+
+        with patch(
+            "backend.app.services.normalization_service._resolve_or_create_vendor",
+            new_callable=AsyncMock,
+            return_value=VENDOR_ID,
+        ):
+            _, line_items_created = await _process_invoice_batch(
+                db=db,
+                batch_rows=batch_rows,
+                tenant_id=TENANT_ID,
+                item_normalizer=mock_item_normalizer,
+                document_id=DOC_ID,
+            )
+
+        assert line_items_created == 1
+        line_items = [o for o in added_objects if isinstance(o, InvoiceLineItem)]
+        assert len(line_items) == 1
+        assert line_items[0].contract_ref == "CTR-001"
+
+
+class TestBatchContractNormalization:
+    @pytest.mark.asyncio
+    async def test_batch_contract_stores_contract_quantity(self):
+        db = _mock_db()
+        added_objects = []
+        db.add.side_effect = lambda obj: added_objects.append(obj)
+
+        batch_rows = [
+            {
+                "contract_id": "CTR-001",
+                "vendor_name": "Acme Pvt Ltd",
+                "effective_start_date": "2024-01-01",
+                "effective_end_date": "2024-12-31",
+                "item_desc": "Cloud Hosting",
+                "quantity": 24,
+                "unit": "Month",
+                "unit_price": 100,
+                "currency": "USD",
+            }
+        ]
+
+        mock_item_normalizer = MagicMock()
+        mock_item_normalizer.normalize_item_desc.side_effect = lambda x: x.lower()
+
+        with patch(
+            "backend.app.services.normalization_service._resolve_or_create_vendor",
+            new_callable=AsyncMock,
+            return_value=VENDOR_ID,
+        ):
+            _, line_items_created = await _process_contract_batch(
+                db=db,
+                batch_rows=batch_rows,
+                tenant_id=TENANT_ID,
+                item_normalizer=mock_item_normalizer,
+                document_id=DOC_ID,
+            )
+
+        assert line_items_created == 1
+        line_items = [o for o in added_objects if isinstance(o, ContractLineItem)]
+        assert len(line_items) == 1
+        assert line_items[0].contract_quantity == Decimal("24")
+
+
+class TestDocumentScopedCleanup:
+    """Normalization must clear stale canonical rows for the source document."""
+
+    @pytest.mark.asyncio
+    async def test_batch_contract_cleanup_runs_before_insert(self):
+        db = _mock_db()
+        pr = ParseResult(
+            document_id=DOC_ID,
+            doc_type=DocType.CONTRACT,
+            parser_used="ExcelParser",
+            parser_version="1.0.0",
+            parse_confidence=0.95,
+            header=DocumentHeader(vendor_name="Acme Pvt Ltd"),
+            line_items=[],
+            raw_extracted_data={
+                "batch_type": "CONTRACT",
+                "batch_rows": [
+                    {
+                        "contract_id": "CTR-001",
+                        "vendor_name": "Acme Pvt Ltd",
+                        "item_desc": "Cloud Hosting",
+                        "unit": "Month",
+                        "unit_price": 100,
+                        "currency": "INR",
+                    }
+                ],
+            },
+        )
+
+        call_order: list[str] = []
+
+        async def cleanup_side_effect(*args, **kwargs):
+            call_order.append("cleanup")
+
+        async def process_side_effect(*args, **kwargs):
+            call_order.append("process")
+            return (1, 1)
+
+        with (
+            patch(
+                "backend.app.services.normalization_service._delete_existing_canonical_for_document",
+                new=AsyncMock(side_effect=cleanup_side_effect),
+            ) as mock_cleanup,
+            patch(
+                "backend.app.services.normalization_service.create_item_normalizer",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "backend.app.services.normalization_service._process_contract_batch",
+                new=AsyncMock(side_effect=process_side_effect),
+            ) as mock_process,
+        ):
+            result = await normalize_parse_result(db, pr, TENANT_ID)
+
+        assert result.contracts_created == 1
+        assert result.line_items_created == 1
+        assert call_order == ["cleanup", "process"]
+        mock_cleanup.assert_awaited_once_with(
+            db=db,
+            tenant_id=TENANT_ID,
+            document_id=DOC_ID,
+            doc_type=DocType.CONTRACT,
+        )
+        mock_process.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_contract_cleanup_deletes_headers_versions_and_lines(self):
+        db = _mock_db()
+
+        await _delete_existing_canonical_for_document(
+            db=db,
+            tenant_id=TENANT_ID,
+            document_id=DOC_ID,
+            doc_type=DocType.CONTRACT,
+        )
+
+        assert db.execute.await_count == 3
+        statements = [str(call.args[0]) for call in db.execute.await_args_list]
+        assert "DELETE FROM contract_line_items" in statements[0]
+        assert "DELETE FROM contract_versions" in statements[1]
+        assert "DELETE FROM contracts" in statements[2]

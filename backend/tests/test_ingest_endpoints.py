@@ -18,6 +18,7 @@ import io
 import uuid
 from decimal import Decimal
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -136,6 +137,64 @@ def test_upload_valid_pdf():
     mock_parse_task.delay.assert_called_once()
 
 
+def test_upload_reupload_stale_invoice_requeues_parse():
+    """Identical reupload re-queues parse when parsed document has no canonical invoice rows."""
+    db = _make_db_mock()
+
+    existing_doc = MagicMock()
+    existing_doc.id = DOC_ID
+    existing_doc.tenant_id = TENANT_ID
+    existing_doc.original_filename = "invoice.xlsx"
+    existing_doc.doc_type = "INVOICE"
+    existing_doc.sha256_hash = "abc123"
+    existing_doc.file_size = 100
+    existing_doc.parse_status = "PARSED"
+    existing_doc.created_at = datetime.now(timezone.utc)
+
+    # execute() order in reupload path:
+    # 1) existing_doc lookup
+    # 2) max upload sequence
+    # 3) canonical invoice count for existing_doc
+    existing_doc_result = MagicMock()
+    existing_doc_result.scalar_one_or_none.return_value = existing_doc
+
+    max_seq_result = MagicMock()
+    max_seq_result.scalar.return_value = 1
+
+    canonical_count_result = MagicMock()
+    canonical_count_result.scalar.return_value = 0
+
+    db.execute.side_effect = [
+        existing_doc_result,
+        max_seq_result,
+        canonical_count_result,
+    ]
+
+    app = _create_app(
+        user_payload=_make_user_payload(),
+        db_mock=db,
+    )
+    client = TestClient(app)
+
+    file_content = b"invoice content"
+
+    with patch("backend.app.api.endpoints.ingest.set_tenant_context", new_callable=AsyncMock):
+        with patch("backend.app.api.endpoints.ingest.parse_document") as mock_parse_task:
+            mock_parse_task.delay = MagicMock()
+            response = client.post(
+                "/api/v1/ingest/upload",
+                files={"file": ("invoice.xlsx", io.BytesIO(file_content), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                data={"doc_type": "INVOICE"},
+            )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["document_id"] == str(DOC_ID)
+    assert data["parse_status"] == "PENDING"
+    assert "Reprocessing queued" in data.get("note", "")
+    mock_parse_task.delay.assert_called_once_with(str(DOC_ID), str(TENANT_ID))
+
+
 # ── Test 2: Upload file exceeding size limit ──────────────────────────
 
 
@@ -240,13 +299,20 @@ def test_trigger_run_valid():
     count_result = MagicMock()
     count_result.scalar.return_value = 2
 
+    # Mock: selected documents are parse-complete
+    docs_status_result = MagicMock()
+    docs_status_result.fetchall.return_value = [
+        SimpleNamespace(id=uuid.uuid4(), parse_status="PARSED"),
+        SimpleNamespace(id=uuid.uuid4(), parse_status="PARSED"),
+    ]
+
     # Mock: document lookups for run_id assignment
     doc_mock = MagicMock()
     doc_mock.id = DOC_ID
     doc_result = MagicMock()
     doc_result.scalar_one_or_none.return_value = doc_mock
 
-    db.execute.side_effect = [count_result, doc_result, doc_result]
+    db.execute.side_effect = [count_result, docs_status_result, doc_result, doc_result]
 
     app = _create_app(
         user_payload=_make_user_payload(),
@@ -312,6 +378,38 @@ def test_trigger_run_wrong_tenant():
     assert response.status_code == 403
     data = response.json()
     assert data["detail"]["error"]["code"] == "FORBIDDEN"
+
+
+def test_trigger_run_documents_not_ready():
+    """Trigger run returns 409 when any selected document is not PARSED."""
+    db = _make_db_mock()
+
+    count_result = MagicMock()
+    count_result.scalar.return_value = 2
+
+    docs_status_result = MagicMock()
+    docs_status_result.fetchall.return_value = [
+        SimpleNamespace(id=uuid.uuid4(), parse_status="PARSING"),
+        SimpleNamespace(id=uuid.uuid4(), parse_status="PARSED"),
+    ]
+
+    db.execute.side_effect = [count_result, docs_status_result]
+
+    app = _create_app(
+        user_payload=_make_user_payload(),
+        db_mock=db,
+    )
+    client = TestClient(app)
+
+    with patch("backend.app.api.endpoints.ingest.set_tenant_context", new_callable=AsyncMock):
+        response = client.post(
+            "/api/v1/ingest/trigger-run",
+            json={"document_ids": [str(uuid.uuid4()), str(uuid.uuid4())]},
+        )
+
+    assert response.status_code == 409
+    data = response.json()
+    assert data["detail"]["error"]["code"] == "DOCUMENTS_NOT_READY"
 
 
 # ── Test 7: Get run status for own run ────────────────────────────────
