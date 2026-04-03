@@ -47,6 +47,13 @@ logger = get_logger(__name__)
 DEFAULT_VALID_TO = date(2099, 12, 31)
 
 
+def _format_task_error(exc: Exception) -> str:
+    message = str(exc).strip()
+    if message:
+        return f"{type(exc).__name__}: {message}"
+    return type(exc).__name__
+
+
 def _extract_raw_tables(file_path: Path) -> list:
     suffix = file_path.suffix.lower()
     if suffix == ".pdf":
@@ -98,6 +105,8 @@ async def _structure_single_contract_async(
     document_id: UUID,
     run_document_id: UUID,
     tenant_id: UUID,
+    *,
+    final_failure: bool,
 ) -> dict:
     started = datetime.now(timezone.utc)
     async with async_session_factory() as db:
@@ -110,11 +119,7 @@ async def _structure_single_contract_async(
             )
         )
         if run_doc is None:
-            return {
-                "status": "failed",
-                "error": "RunDocumentNotFound",
-                "run_document_id": str(run_document_id),
-            }
+            raise LookupError(f"RunDocumentNotFound:{run_document_id}")
 
         run_doc.task_status = "PROCESSING"
         run_doc.error_message = None
@@ -244,7 +249,7 @@ async def _structure_single_contract_async(
             ).total_seconds()
             await db.commit()
 
-            update_structuring_run_status.delay(str(run_doc.run_id), str(tenant_id))
+            await _update_structuring_run_status_async(run_doc.run_id, tenant_id)
 
             return {
                 "status": "success",
@@ -262,15 +267,19 @@ async def _structure_single_contract_async(
                 )
             )
             if run_doc is not None:
-                run_doc.task_status = "FAILED"
-                run_doc.error_message = str(exc)
-                run_doc.processing_time_seconds = (
-                    datetime.now(timezone.utc) - started
-                ).total_seconds()
+                if final_failure:
+                    run_doc.task_status = "FAILED"
+                    run_doc.error_message = _format_task_error(exc)
+                    run_doc.processing_time_seconds = (
+                        datetime.now(timezone.utc) - started
+                    ).total_seconds()
+                else:
+                    # Keep the document non-terminal while Celery schedules a retry.
+                    run_doc.task_status = "PROCESSING"
+                    run_doc.error_message = None
+                    run_doc.processing_time_seconds = None
                 await db.commit()
-
-            if run_doc is not None:
-                update_structuring_run_status.delay(str(run_doc.run_id), str(tenant_id))
+                await _update_structuring_run_status_async(run_doc.run_id, tenant_id)
 
             raise
 
@@ -307,13 +316,16 @@ async def _update_structuring_run_status_async(run_id: UUID, tenant_id: UUID) ->
             run.status = "PARTIAL_SUCCESS"
         elif statuses and all(s == "FAILED" for s in statuses):
             run.status = "FAILED"
-        elif any(s == "PROCESSING" for s in statuses):
+        elif statuses and any(s in {"PROCESSING", "COMPLETE", "FAILED"} for s in statuses):
             run.status = "PROCESSING"
         else:
             run.status = "PENDING"
 
-        if run.status in {"COMPLETE", "PARTIAL_SUCCESS", "FAILED"} and run.completed_at is None:
-            run.completed_at = datetime.now(timezone.utc)
+        if run.status in {"COMPLETE", "PARTIAL_SUCCESS", "FAILED"}:
+            if run.completed_at is None:
+                run.completed_at = datetime.now(timezone.utc)
+        else:
+            run.completed_at = None
         if run.status in {"PROCESSING", "COMPLETE", "PARTIAL_SUCCESS", "FAILED"} and run.started_at is None:
             run.started_at = datetime.now(timezone.utc)
 
@@ -816,12 +828,14 @@ async def _generate_structuring_export_async(
     max_retries=2,
 )
 def structure_single_contract(self, document_id: str, run_document_id: str, tenant_id: str):
+    final_failure = self.request.retries >= self.max_retries
     try:
         return _run_async(
             _structure_single_contract_async(
                 UUID(document_id),
                 UUID(run_document_id),
                 UUID(tenant_id),
+                final_failure=final_failure,
             )
         )
     except Exception as exc:
@@ -832,6 +846,8 @@ def structure_single_contract(self, document_id: str, run_document_id: str, tena
             tenant_id=tenant_id,
             error_type=type(exc).__name__,
         )
+        if final_failure:
+            raise
         raise self.retry(exc=exc)
 
 

@@ -21,7 +21,11 @@ from uuid import uuid4
 
 import pytest
 
-from backend.app.parsers.pdf_scanned_parser import ScannedPdfParser
+from backend.app.parsers.pdf_scanned_parser import (
+    PADDLE_OCR_CONFIG,
+    ScannedPdfParser,
+    _force_paddle_ir_optim_off,
+)
 
 
 @pytest.fixture
@@ -139,6 +143,31 @@ class TestLowOcrQuality:
         assert result.parse_confidence < 0.50
 
 
+class TestMemoryRetry:
+    """Page OCR should retry at lower resolution on memory errors."""
+
+    def test_retries_page_after_memory_error(self, parser, doc_id):
+        mock_image = MagicMock()
+        mock_image.size = (1000, 1000)
+        mock_image.resize.return_value = mock_image
+        parser._ocr_engine.ocr.side_effect = [
+            MemoryError("bad allocation"),
+            _make_ocr_result([
+                ("Vendor: RetryCo", 0.90),
+                ("Invoice No: INV-200", 0.90),
+                ("Date: 01/01/2024", 0.90),
+                ("Description  Qty  Unit  Rate  Amount", 0.90),
+                ("Service  1  Job  100  100", 0.90),
+            ]),
+        ]
+
+        with patch.object(parser, "_convert_pdf_to_images", return_value=[mock_image]):
+            result = parser.parse(Path("test.pdf"), doc_id)
+
+        assert result.parse_confidence > 0.0
+        assert parser._ocr_engine.ocr.call_count == 2
+
+
 class TestPageByPageProcessing:
     """Verify page-by-page processing with gc.collect."""
 
@@ -195,6 +224,32 @@ class TestMalformedPdf:
         codes = [f.code for f in result.failure_flags]
         assert "CORRUPTED_FILE" in codes
 
+    def test_corrupted_flag_includes_error_message(self, parser, doc_id):
+        with patch.object(parser, "_convert_pdf_to_images", side_effect=Exception("Bad PDF")):
+            result = parser.parse(Path("test.pdf"), doc_id)
+        assert "Bad PDF" in result.failure_flags[0].message
+        assert result.raw_extracted_data["error"]["message"] == "Bad PDF"
+
+
+class TestDependencyFailures:
+    """Missing OCR dependencies should surface a specific flag and message."""
+
+    def test_dependency_missing_flag(self, parser, doc_id):
+        mock_image = MagicMock()
+        with patch.object(parser, "_convert_pdf_to_images", return_value=[mock_image]):
+            with patch.object(
+                parser,
+                "_get_ocr_engine",
+                side_effect=RuntimeError(
+                    "PaddleOCR dependency missing: paddleocr. Install OCR dependencies in the project venv."
+                ),
+            ):
+                result = parser.parse(Path("test.pdf"), doc_id)
+
+        codes = [f.code for f in result.failure_flags]
+        assert "DEPENDENCY_MISSING" in codes
+        assert "paddleocr" in result.failure_flags[0].message.lower()
+
 
 class TestEmptyPdf:
     """PDF with no pages."""
@@ -230,3 +285,21 @@ class TestNoTesseract:
         assert parser.parser_name == "pdf_scanned_parser_v1"
         # Confirm the OCR engine attribute exists (mocked)
         assert parser._ocr_engine is not None
+
+    def test_mkldnn_disabled_for_windows_cpu_stability(self):
+        assert PADDLE_OCR_CONFIG["enable_mkldnn"] is False
+        assert PADDLE_OCR_CONFIG["use_angle_cls"] is False
+
+    def test_ir_optim_forced_off(self, monkeypatch):
+        from paddle import inference
+
+        calls = []
+
+        def fake_switch_ir_optim(self, flag):
+            calls.append(flag)
+            return None
+
+        monkeypatch.setattr(inference.Config, "switch_ir_optim", fake_switch_ir_optim)
+        _force_paddle_ir_optim_off()
+        inference.Config.switch_ir_optim(object(), True)
+        assert calls == [False]

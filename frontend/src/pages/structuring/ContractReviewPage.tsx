@@ -106,6 +106,13 @@ export default function ContractReviewPage() {
     queryKey,
     queryFn: () => getRunResults(runId, { document_id: documentId }),
     enabled: Boolean(runId && documentId),
+    refetchInterval: (q) => {
+      const taskStatus = String(q.state.data?.documents[0]?.task_status || '').toUpperCase();
+      if (taskStatus === 'COMPLETE' || taskStatus === 'FAILED') {
+        return false;
+      }
+      return 3000;
+    },
   });
 
   const doc = resultsQuery.data?.documents[0] || null;

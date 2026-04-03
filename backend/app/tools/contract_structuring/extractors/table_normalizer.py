@@ -58,8 +58,20 @@ def _header_role_override(column_name: str) -> Optional[str]:
     if not normalized:
         return None
 
+    if normalized == 'contract id':
+        return 'CONTRACT_ID'
+    if re.search(r'\bversion\b|\bver\b', normalized):
+        return 'UNKNOWN'
     if re.search(r'\b(date|effective|expiry|start|end|valid)\b', normalized):
         return 'UNKNOWN'
+    if re.search(
+        r'\bcontract\b',
+        normalized,
+    ) and re.search(
+        r'\b(id|no|ref|number)\b',
+        normalized,
+    ):
+        return 'CONTRACT_ID'
     if re.search(r'\b(vendor|supplier|contract)\b', normalized):
         return 'UNKNOWN'
 
@@ -144,6 +156,8 @@ def _map_column_roles_with_sources(
             best_score = 0
             best_role = None
             for role_name, keywords in ROLE_KEYWORDS.items():
+                if role_name == 'CONTRACT_ID' and not _is_contract_id_header_candidate(col_lower):
+                    continue
                 for kw in keywords:
                     score = fuzz.partial_ratio(col_lower, kw)
                     if score > best_score:
@@ -161,8 +175,50 @@ def _map_column_roles_with_sources(
         roles = _refine_roles_by_values(roles, sample_rows, sources)
 
     roles = _apply_unit_numeric_guard(roles, sample_rows or [], sources)
+    roles = _apply_contract_id_guard(roles, sample_rows or [], sources)
 
     return roles
+
+
+def _is_contract_id_header_candidate(header: str) -> bool:
+    normalized = _normalize_header(header)
+    if not normalized:
+        return False
+    if normalized == 'contract id':
+        return True
+    if re.search(r'\bversion\b|\bver\b', normalized):
+        return False
+    return bool(re.search(r'\bcontract\b', normalized) and re.search(r'\b(id|no|ref|number)\b', normalized))
+
+
+def _sample_non_empty_values(sample_rows: List[Dict[str, Any]], column_name: str, limit: int = 10) -> List[str]:
+    values: List[str] = []
+    for row in sample_rows:
+        value = str(row.get(column_name, '')).strip()
+        if not value:
+            continue
+        values.append(value)
+        if len(values) >= limit:
+            break
+    return values
+
+
+def _is_plain_integer_string(value: str) -> bool:
+    return bool(re.fullmatch(r'\d+', (value or '').strip()))
+
+
+def _looks_like_small_integer_series(values: List[str]) -> bool:
+    if not values:
+        return False
+    if not all(_is_plain_integer_string(value) for value in values):
+        return False
+    return all(int(value) <= 1000 for value in values)
+
+
+def _looks_like_textual_contract_id(values: List[str]) -> bool:
+    if not values:
+        return False
+    return any(re.search(r'[A-Za-z]', value) or re.search(r'[-_/]', value) for value in values)
 
 
 def _is_date_like(value: str) -> bool:
@@ -290,6 +346,60 @@ def _apply_unit_numeric_guard(
     return roles
 
 
+def _apply_contract_id_guard(
+    roles: Dict[str, str],
+    sample_rows: List[Dict[str, Any]],
+    role_sources: Optional[Dict[str, str]] = None,
+) -> Dict[str, str]:
+    contract_cols = [col for col, role in roles.items() if role == 'CONTRACT_ID']
+    if not contract_cols:
+        return roles
+
+    sources = role_sources if role_sources is not None else {}
+    scores: Dict[str, int] = {}
+
+    for col in contract_cols:
+        normalized = _normalize_header(col)
+        values = _sample_non_empty_values(sample_rows, col)
+
+        if re.search(r'\bversion\b|\bver\b', normalized):
+            roles[col] = 'UNKNOWN'
+            sources[col] = 'contract_id_guard_version_header'
+            continue
+
+        if values and not _looks_like_textual_contract_id(values):
+            if _looks_like_small_integer_series(values) or all(_is_plain_integer_string(value) for value in values):
+                roles[col] = 'UNKNOWN'
+                sources[col] = 'contract_id_guard_integer_values'
+                continue
+
+        score = 0
+        if normalized == 'contract id':
+            score += 10
+        if re.search(r'\bcontract\b', normalized):
+            score += 4
+        if re.search(r'\b(id|no|ref|number)\b', normalized):
+            score += 3
+        if _looks_like_textual_contract_id(values):
+            score += 5
+        if values and all(_is_plain_integer_string(value) for value in values):
+            score -= 10
+        scores[col] = score
+
+    surviving_cols = [col for col, role in roles.items() if role == 'CONTRACT_ID']
+    if len(surviving_cols) <= 1:
+        return roles
+
+    best_col = max(surviving_cols, key=lambda col: scores.get(col, 0))
+    for col in surviving_cols:
+        if col == best_col:
+            continue
+        roles[col] = 'UNKNOWN'
+        sources[col] = 'contract_id_guard_deduped'
+
+    return roles
+
+
 def _extract_line_item(row: Dict, column_roles: Dict[str, str], source_page: int, method: str):
     from backend.app.tools.contract_structuring.extractors.base_extractor import NormalizedLineItem
 
@@ -378,6 +488,17 @@ class TableNormalizer:
         if not rows:
             return {}
         return _map_column_roles(list(rows[0].keys()), rows)
+
+    def detect_column_roles(self, table_like) -> Dict[str, str]:
+        if table_like is None:
+            return {}
+        if hasattr(table_like, 'to_dict'):
+            rows = table_like.to_dict('records')
+        else:
+            rows = table_like
+        if not rows:
+            return {}
+        return self.classify_columns(rows)
 
     def normalize_table(self, stitched_table) -> List:
         from backend.app.tools.contract_structuring.extractors.base_extractor import NormalizedLineItem

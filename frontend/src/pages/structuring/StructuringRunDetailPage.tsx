@@ -99,6 +99,21 @@ export default function StructuringRunDetailPage() {
     queryKey: ['structuringRunResults', runId],
     queryFn: () => getRunResults(runId),
     enabled: !!runId,
+    refetchInterval: (q) => {
+      const runStatusValue = String(statusQuery.data?.status || '').toUpperCase();
+      const documents = q.state.data?.documents || [];
+      const allDocumentsTerminal = documents.length > 0 && documents.every((doc) => {
+        const taskStatus = String(doc.task_status || '').toUpperCase();
+        return taskStatus === 'COMPLETE' || taskStatus === 'FAILED';
+      });
+      if (
+        (runStatusValue === 'COMPLETE' || runStatusValue === 'PARTIAL_SUCCESS' || runStatusValue === 'FAILED')
+        && allDocumentsTerminal
+      ) {
+        return false;
+      }
+      return 3000;
+    },
   });
 
   const docsQuery = useQuery({

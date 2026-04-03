@@ -226,14 +226,24 @@ async def get_leakage_record(
     tenant_id = current_user.tenant_id
     await set_tenant_context(db, tenant_id)
 
-    stmt = select(LeakageRecord).where(
-        LeakageRecord.id == record_id,
-        LeakageRecord.tenant_id == tenant_id,
+    stmt = (
+        select(
+            LeakageRecord,
+            Invoice.invoice_no.label("invoice_no"),
+            Invoice.invoice_date.label("invoice_date"),
+            Vendor.normalized_name.label("vendor_name"),
+        )
+        .join(Invoice, LeakageRecord.invoice_id == Invoice.id)
+        .join(Vendor, Invoice.vendor_id == Vendor.id)
+        .where(
+            LeakageRecord.id == record_id,
+            LeakageRecord.tenant_id == tenant_id,
+        )
     )
     result = await db.execute(stmt)
-    record = result.scalar_one_or_none()
+    row = result.first()
 
-    if record is None:
+    if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -244,8 +254,11 @@ async def get_leakage_record(
             },
         )
 
+    record = row[0]
+
     return {
         "id": str(record.id),
+        "run_id": str(record.run_id) if record.run_id else None,
         "leakage_type": record.leakage_type,
         "amount": float(record.amount),
         "currency": record.currency,
@@ -253,6 +266,9 @@ async def get_leakage_record(
         "rule_applied": record.rule_applied,
         "explanation": record.explanation,
         "status": record.status,
+        "vendor_name": row.vendor_name,
+        "invoice_no": row.invoice_no,
+        "invoice_date": str(row.invoice_date) if row.invoice_date else None,
         "evidence": record.evidence_jsonb,
         "reviewed_by": str(record.reviewed_by_user_id) if record.reviewed_by_user_id else None,
         "reviewed_at": str(record.reviewed_at) if record.reviewed_at else None,

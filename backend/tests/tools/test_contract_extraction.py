@@ -102,6 +102,47 @@ class TestTableNormalizer:
         roles = _map_column_roles(['Item', 'unit', 'Rate'], rows)
         assert roles['unit'] == 'UNIT'
 
+    def test_contract_id_header_is_preserved_in_normalized_items(self):
+        from backend.app.tools.contract_structuring.extractors.base_extractor import RawTableResult
+        from backend.app.tools.contract_structuring.extractors.table_normalizer import normalize_tables
+
+        table = RawTableResult(
+            source_page=1,
+            extraction_method='EXCEL_SHEET',
+            raw_table_json=[
+                {'Contract_ID': 'LS-CTR-001', 'Item': 'Steel Pipe', 'Unit': 'Nos', 'Rate': '850'},
+                {'Contract_ID': 'LS-CTR-002', 'Item': 'Gate Valve', 'Unit': 'Nos', 'Rate': '3500'},
+            ],
+            table_confidence=0.95,
+            column_count=4,
+            row_count=2,
+        )
+
+        results = normalize_tables([table], stitched=False)
+
+        assert [item.contract_id for item in results] == ['LS-CTR-001', 'LS-CTR-002']
+
+    def test_detect_column_roles_prefers_contract_id_over_version_number(self):
+        import pandas as pd
+        from backend.app.tools.contract_structuring.extractors.table_normalizer import TableNormalizer
+
+        df = pd.DataFrame(
+            {
+                'Contract_ID': ['LS-CTR-001', 'LS-CTR-002'],
+                'Vendor_Name': ['TCS Ltd', 'Infosys'],
+                'Item_Description': ['Data Processing', 'Consulting'],
+                'Unit': ['GB', 'Hour'],
+                'Unit_Price': [4122.47, 846.10],
+                'Currency': ['USD', 'INR'],
+                'Version_Number': [2, 1],
+            }
+        )
+
+        roles = TableNormalizer().detect_column_roles(df)
+
+        assert roles['Contract_ID'] == 'CONTRACT_ID'
+        assert roles['Version_Number'] != 'CONTRACT_ID'
+
 
 class TestMultiPageStitcher:
     def test_consecutive_same_columns_stitched(self):
@@ -251,3 +292,93 @@ class TestExcelExtractor:
             assert all(t.table_confidence < 0.5 for t in tables)
         finally:
             os.unlink(path)
+
+    def test_extract_structured_clauses_from_excel_columns(self):
+        import pandas as pd
+        import tempfile
+        from backend.app.tools.contract_structuring.extractors.excel_extractor import ExcelExtractor
+
+        data = {
+            'Contract_ID': ['LS-CTR-001', 'LS-CTR-001'],
+            'Vendor_Name': ['TCS Ltd', 'TCS Ltd'],
+            'Effective_Start_Date': ['2024-02-29', '2024-02-29'],
+            'Effective_End_Date': ['2025-04-09', '2025-04-09'],
+            'Item_Description': ['Data Processing Services', 'Cloud Support'],
+            'Unit': ['GB', 'Hour'],
+            'Unit_Price': [4122.47, 846.10],
+            'Currency': ['USD', 'USD'],
+            'Version_Number': [2, 2],
+        }
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+            path = f.name
+        try:
+            pd.DataFrame(data).to_excel(path, index=False)
+            result = ExcelExtractor().extract(path)
+            clauses = {clause.clause_type: clause.extracted_value for clause in result.clauses}
+
+            assert clauses['VENDOR_NAME'] == 'TCS Ltd'
+            assert clauses['EFFECTIVE_DATE'] == '2024-02-29'
+            assert clauses['EXPIRY_DATE'] == '2025-04-09'
+            assert clauses['CONTRACT_REF'] == 'LS-CTR-001'
+        finally:
+            os.unlink(path)
+
+
+class TestPdfExtractor:
+    def test_scanned_pdf_falls_back_to_page_ocr(self, monkeypatch, tmp_path):
+        from backend.app.tools.contract_structuring.extractors import pdf_extractor
+
+        document_path = tmp_path / 'scan.pdf'
+        document_path.write_bytes(b'%PDF-1.4 test')
+
+        monkeypatch.setattr(pdf_extractor, '_get_pdf_page_count', lambda _: 1)
+        monkeypatch.setattr(pdf_extractor, '_try_camelot_lattice', lambda *args, **kwargs: [])
+        monkeypatch.setattr(pdf_extractor, '_try_camelot_stream', lambda *args, **kwargs: [])
+        monkeypatch.setattr(pdf_extractor, '_try_pdfplumber', lambda *args, **kwargs: [])
+        monkeypatch.setattr(
+            pdf_extractor,
+            '_process_page_with_timeout',
+            lambda *args, **kwargs: {
+                'status': 'success',
+                'text': 'Contract LS-CTR-001',
+                'rows': [{'Contract ID': 'LS-CTR-001', 'Item': 'Steel Pipe', 'Rate': '850'}],
+                'confidences': [0.91, 0.93],
+            },
+        )
+
+        tables = pdf_extractor.extract_tables_from_pdf(str(document_path))
+
+        assert len(tables) == 1
+        assert tables[0].extraction_method == 'PADDLE_OCR'
+        assert tables[0].raw_table_json[0]['Contract ID'] == 'LS-CTR-001'
+
+    def test_scanned_pdf_timeout_skips_page_and_continues(self, monkeypatch, tmp_path):
+        from backend.app.tools.contract_structuring.extractors import pdf_extractor
+
+        document_path = tmp_path / 'scan.pdf'
+        document_path.write_bytes(b'%PDF-1.4 test')
+
+        responses = iter([
+            {'status': 'timeout'},
+            {
+                'status': 'success',
+                'text': 'Page 2',
+                'rows': [{'Item': 'Gate Valve', 'Rate': '3500'}],
+                'confidences': [0.88],
+            },
+        ])
+
+        monkeypatch.setattr(pdf_extractor, '_get_pdf_page_count', lambda _: 2)
+        monkeypatch.setattr(pdf_extractor, '_try_camelot_lattice', lambda *args, **kwargs: [])
+        monkeypatch.setattr(pdf_extractor, '_try_camelot_stream', lambda *args, **kwargs: [])
+        monkeypatch.setattr(pdf_extractor, '_try_pdfplumber', lambda *args, **kwargs: [])
+        monkeypatch.setattr(
+            pdf_extractor,
+            '_process_page_with_timeout',
+            lambda *args, **kwargs: next(responses),
+        )
+
+        tables = pdf_extractor.extract_tables_from_pdf(str(document_path))
+
+        assert len(tables) == 1
+        assert tables[0].source_page == 2

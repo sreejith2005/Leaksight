@@ -39,6 +39,7 @@ def structure_contract(
 
     raw_tables = []
     full_text = ""
+    excel_clauses = None
 
     if suffix == '.pdf':
         from backend.app.tools.contract_structuring.extractors.pdf_extractor import (
@@ -56,10 +57,12 @@ def structure_contract(
 
     elif suffix in ('.xlsx', '.xls', '.csv'):
         from backend.app.tools.contract_structuring.extractors.excel_extractor import (
-            extract_tables_from_excel
+            extract_clauses_from_excel,
+            extract_tables_from_excel,
         )
         raw_tables = extract_tables_from_excel(document_path)
         full_text = ""
+        excel_clauses = extract_clauses_from_excel(document_path)
 
     else:
         logger.warning(f"Unsupported file type: {suffix}")
@@ -69,7 +72,7 @@ def structure_contract(
 
     stitched_tables = stitch_tables(raw_tables)
     line_items = normalize_tables(stitched_tables)
-    clauses = extract_clauses(full_text, document_path)
+    clauses = excel_clauses if excel_clauses is not None else extract_clauses(full_text, document_path)
 
     version_number = 1
     base_contract_id = None

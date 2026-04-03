@@ -22,6 +22,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from statistics import mean
+from collections.abc import Iterator
 from typing import Any
 from uuid import UUID
 
@@ -39,10 +40,16 @@ logger = get_logger(__name__)
 
 # ── PaddleOCR configuration (locked — no Tesseract) ──────────────
 PADDLE_OCR_CONFIG = {
-    "use_angle_cls": True,
+    # Angle classification is too expensive for large scanned contracts on
+    # Windows CPU and is not required for the sample contract set.
+    "use_angle_cls": False,
     "lang": "en",
     "use_gpu": False,
     "show_log": False,
+    # Windows CPU builds have been unstable with oneDNN enabled.
+    # Disable it to keep OCR initialization deterministic.
+    "enable_mkldnn": False,
+    "det_limit_side_len": 640,
     "det_model_dir": None,
     "rec_model_dir": None,
     "cls_model_dir": None,
@@ -88,6 +95,39 @@ _LINE_TOTAL_PATTERNS = re.compile(
 
 # Low OCR quality threshold
 _LOW_QUALITY_CHAR_CONFIDENCE = 0.60
+_PDF_RENDER_SCALE = 0.5
+_PAGE_OCR_SCALE_RETRIES = (1.0, 0.75, 0.5)
+
+
+def _force_paddle_ir_optim_off() -> None:
+    """Disable Paddle IR optimization for this process.
+
+    PaddleOCR 2.9 on Windows CPU can crash in fused_conv2d during predictor.run()
+    even when engine construction succeeds. For this parser we prefer the stable
+    non-optimized inference path over an opaque runtime failure.
+    """
+    from paddle import inference
+
+    current = inference.Config.switch_ir_optim
+    if getattr(current, "_leaksight_forced_false", False):
+        return
+
+    original = current
+
+    def _switch_ir_optim_disabled(self, _flag):
+        return original(self, False)
+
+    _switch_ir_optim_disabled._leaksight_forced_false = True
+    inference.Config.switch_ir_optim = _switch_ir_optim_disabled
+
+
+def _is_memory_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return isinstance(exc, MemoryError) or "bad allocation" in message
+
+
+def _is_dependency_error(exc: Exception) -> bool:
+    return "dependency missing" in str(exc).lower()
 
 
 def _parse_numeric(value: Any) -> Decimal | None:
@@ -171,8 +211,22 @@ class ScannedPdfParser(BaseParser):
     def _get_ocr_engine(self):
         """Lazy-initialize PaddleOCR engine."""
         if self._ocr_engine is None:
-            from paddleocr import PaddleOCR
-            self._ocr_engine = PaddleOCR(**PADDLE_OCR_CONFIG)
+            _force_paddle_ir_optim_off()
+            try:
+                from paddleocr import PaddleOCR
+            except ModuleNotFoundError as exc:
+                missing_name = getattr(exc, "name", None) or str(exc)
+                raise RuntimeError(
+                    "PaddleOCR dependency missing: "
+                    f"{missing_name}. Install OCR dependencies in the project venv."
+                ) from exc
+
+            try:
+                self._ocr_engine = PaddleOCR(**PADDLE_OCR_CONFIG)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"PaddleOCR initialization failed: {type(exc).__name__}: {exc}"
+                ) from exc
         return self._ocr_engine
 
     def _get_structure_engine(self):
@@ -206,9 +260,15 @@ class ScannedPdfParser(BaseParser):
 
         try:
             page_images = self._convert_pdf_to_images(file_path)
-            raw_data["page_count"] = len(page_images)
+            if isinstance(page_images, tuple):
+                page_count, page_iter = page_images
+            else:
+                page_count = len(page_images)
+                page_iter = iter(page_images)
 
-            if not page_images:
+            raw_data["page_count"] = page_count
+
+            if page_count == 0:
                 failure_flags.append(FailureFlag(
                     severity="ERROR",
                     code="EMPTY_FILE",
@@ -226,11 +286,9 @@ class ScannedPdfParser(BaseParser):
                     raw_extracted_data=raw_data,
                 )
 
-            for page_num, image in enumerate(page_images, 1):
+            for page_num, image in enumerate(page_iter, 1):
                 try:
-                    page_result = self._process_page(
-                        image, page_num, failure_flags
-                    )
+                    page_result = self._process_page(image, page_num, failure_flags)
                     text = page_result.get("text", "")
                     table_rows = page_result.get("table_rows", [])
                     char_confidences = page_result.get("char_confidences", [])
@@ -254,11 +312,46 @@ class ScannedPdfParser(BaseParser):
                             message=f"OCR character confidence below {_LOW_QUALITY_CHAR_CONFIDENCE} on page {page_num}",
                             page_number=page_num,
                         ))
+                except Exception as exc:
+                    if _is_dependency_error(exc):
+                        raise
+                    raw_data.setdefault("page_errors", []).append(
+                        {
+                            "page_number": page_num,
+                            "error_type": type(exc).__name__,
+                            "message": str(exc),
+                        }
+                    )
+                    failure_flags.append(FailureFlag(
+                        severity="WARNING",
+                        code="PAGE_PROCESSING_FAILED",
+                        message=(
+                            f"Page {page_num} could not be processed: "
+                            f"{type(exc).__name__}: {exc}"
+                        ),
+                        page_number=page_num,
+                    ))
+                    logger.warning(
+                        "scanned_pdf_page_failed",
+                        document_id=str(document_id),
+                        page_number=page_num,
+                        page_count=page_count,
+                        error_type=type(exc).__name__,
+                        error_message=str(exc),
+                    )
 
                 finally:
                     # Release memory immediately — critical for PaddleOCR
                     del image
                     gc.collect()
+
+                if page_num == 1 or page_num % 10 == 0 or page_num == page_count:
+                    logger.info(
+                        "scanned_pdf_page_processed",
+                        document_id=str(document_id),
+                        page_number=page_num,
+                        page_count=page_count,
+                    )
 
             # ── Confidence calculation ────────────────────────────
             if all_char_confidences:
@@ -282,10 +375,30 @@ class ScannedPdfParser(BaseParser):
             confidence = max(round(confidence, 4), 0.0)
 
         except Exception as exc:
+            error_message = str(exc).strip()
+            failure_code = (
+                "DEPENDENCY_MISSING"
+                if "dependency missing" in error_message.lower()
+                else "CORRUPTED_FILE"
+            )
+            raw_data["error"] = {
+                "type": type(exc).__name__,
+                "message": error_message or type(exc).__name__,
+            }
+            logger.exception(
+                "scanned_pdf_parse_failed",
+                document_id=str(document_id),
+                file_path=str(file_path),
+                error_type=type(exc).__name__,
+                error_message=error_message or None,
+            )
             failure_flags.append(FailureFlag(
                 severity="ERROR",
-                code="CORRUPTED_FILE",
-                message=f"Failed to parse scanned PDF: {type(exc).__name__}",
+                code=failure_code,
+                message=(
+                    "Failed to parse scanned PDF: "
+                    f"{type(exc).__name__}: {error_message or 'no error message'}"
+                ),
             ))
             confidence = 0.0
 
@@ -301,24 +414,46 @@ class ScannedPdfParser(BaseParser):
             raw_extracted_data=raw_data,
         )
 
-    def _convert_pdf_to_images(self, file_path: Path) -> list:
-        """Convert PDF pages to images for OCR processing."""
+    def _convert_pdf_to_images(self, file_path: Path) -> tuple[int, Iterator[Any]] | list:
+        """Convert PDF pages to images for OCR processing.
+
+        Returns a ``(page_count, iterator)`` tuple for real PDF files so pages are
+        rendered lazily, but tests may still patch this method with a plain list.
+        """
         try:
             from pdf2image import convert_from_path
-            return convert_from_path(str(file_path), dpi=200)
+            images = convert_from_path(str(file_path), dpi=150)
+            return len(images), iter(images)
         except ImportError:
-            # Fallback: use pypdfium2
-            try:
-                import pypdfium2 as pdfium
-                pdf = pdfium.PdfDocument(str(file_path))
-                images = []
-                for page in pdf:
-                    bitmap = page.render(scale=2)
-                    pil_image = bitmap.to_pil()
-                    images.append(pil_image)
-                return images
-            except Exception:
-                return []
+            pass
+        except Exception:
+            return []
+
+        # Fallback: use pypdfium2 lazily page-by-page
+        try:
+            import pypdfium2 as pdfium
+
+            pdf = pdfium.PdfDocument(str(file_path))
+            page_count = len(pdf)
+
+            def _page_iter() -> Iterator[Any]:
+                try:
+                    for page_index in range(page_count):
+                        page = pdf[page_index]
+                        bitmap = None
+                        try:
+                            bitmap = page.render(scale=_PDF_RENDER_SCALE)
+                            yield bitmap.to_pil()
+                        finally:
+                            if bitmap is not None:
+                                del bitmap
+                            if hasattr(page, "close"):
+                                page.close()
+                finally:
+                    if hasattr(pdf, "close"):
+                        pdf.close()
+
+            return page_count, _page_iter()
         except Exception:
             return []
 
@@ -335,8 +470,25 @@ class ScannedPdfParser(BaseParser):
         import numpy as np
 
         ocr = self._get_ocr_engine()
-        img_array = np.array(image)
-        result = ocr.ocr(img_array, cls=True)
+        result = None
+
+        for scale_index, scale_factor in enumerate(_PAGE_OCR_SCALE_RETRIES, start=1):
+            try:
+                working_image = self._resize_image(image, scale_factor)
+                img_array = np.array(working_image)
+                result = ocr.ocr(img_array, cls=False)
+                break
+            except Exception as exc:
+                if not _is_memory_error(exc) or scale_index == len(_PAGE_OCR_SCALE_RETRIES):
+                    raise
+                logger.warning(
+                    "scanned_pdf_page_retry_low_res",
+                    page_number=page_num,
+                    retry_scale=scale_factor,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
+                gc.collect()
 
         text_lines: list[str] = []
         char_confidences: list[float] = []
@@ -376,6 +528,16 @@ class ScannedPdfParser(BaseParser):
             "table_rows": table_rows,
             "char_confidences": char_confidences,
         }
+
+    def _resize_image(self, image: Any, scale_factor: float) -> Any:
+        """Downscale a page image before OCR to avoid memory spikes."""
+        if scale_factor >= 0.999:
+            return image
+
+        width, height = image.size
+        resized_width = max(1, int(width * scale_factor))
+        resized_height = max(1, int(height * scale_factor))
+        return image.resize((resized_width, resized_height))
 
     def _infer_table_from_text(self, text_lines: list[str]) -> list[list[str]]:
         """Attempt to infer table rows from OCR text lines.

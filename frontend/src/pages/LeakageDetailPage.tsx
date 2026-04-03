@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getLeakageRecord, acceptRecord, rejectRecord } from '../api/endpoints/leakage';
+import { ExplanationPanel } from '../components/leakage/ExplanationPanel';
+import { EvidencePanel } from '../components/leakage/EvidencePanel';
+import { EMPTY_VALUE, formatDateValue } from '../components/leakage/leakageDetailUtils';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { StatusBadge } from '../components/ui/StatusBadge';
@@ -76,7 +79,6 @@ export default function LeakageDetailPage() {
 
   return (
     <div className="animate-fadeIn" style={{ maxWidth: 800, margin: '0 auto' }}>
-      {/* Back button */}
       <button
         onClick={() => navigate('/leakage')}
         style={{
@@ -93,16 +95,15 @@ export default function LeakageDetailPage() {
         onMouseEnter={(e) => { (e.target as HTMLElement).style.opacity = '0.8'; }}
         onMouseLeave={(e) => { (e.target as HTMLElement).style.opacity = '1'; }}
       >
-        ← Back to Leakage Review
+        {'<- Back to Leakage Review'}
       </button>
 
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-8)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-8)', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-3xl)', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 'var(--space-3)', letterSpacing: '-0.01em', textTransform: 'capitalize' }}>
-            {record.vendor_name}
+            {record.vendor_name || EMPTY_VALUE}
           </h1>
-          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
             <StatusBadge status={record.status} />
             <span style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               {record.leakage_type.replace(/_/g, ' ')}
@@ -114,65 +115,57 @@ export default function LeakageDetailPage() {
         </div>
       </div>
 
-      {/* Detail fields */}
       <Card style={{ marginBottom: 'var(--space-6)' }}>
         <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-5)' }}>
           Finding Details
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-4)' }}>
           <DetailField label="Invoice No" value={record.invoice_no} />
-          <DetailField label="Invoice Date" value={record.invoice_date ? new Date(record.invoice_date).toLocaleDateString() : '—'} />
+          <DetailField label="Invoice Date" value={formatDateValue(record.invoice_date)} />
           <DetailField label="Confidence" value={`${(record.confidence * 100).toFixed(0)}%`} />
           <DetailField label="Rule Applied" value={record.rule_applied} />
-          <DetailField label="Created" value={record.created_at ? new Date(record.created_at).toLocaleDateString() : '—'} />
+          <DetailField label="Created" value={formatDateValue(record.created_at)} />
           <DetailField label="Currency" value={record.currency} />
         </div>
       </Card>
 
-      {/* Explanation */}
       <Card style={{ marginBottom: 'var(--space-6)' }}>
         <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-4)' }}>
           Explanation
         </h3>
-        <p style={{ fontFamily: 'var(--font-body)', color: 'var(--text-primary)', fontSize: 'var(--text-sm)', lineHeight: 1.7 }}>
-          {record.explanation}
-        </p>
+        <ExplanationPanel
+          leakageType={record.leakage_type}
+          evidence={record.evidence}
+          explanation={record.explanation}
+          currency={record.currency}
+        />
       </Card>
 
-      {/* Evidence */}
       {record.evidence && Object.keys(record.evidence).length > 0 && (
         <Card style={{ marginBottom: 'var(--space-6)' }}>
           <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-4)' }}>
             Evidence
           </h3>
-          <pre
-            style={{
-              backgroundColor: 'var(--bg-base)',
-              padding: 'var(--space-5)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--text-primary)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--text-xs)',
-              overflow: 'auto',
-              maxHeight: 300,
-              border: '1px solid var(--border-subtle)',
-              lineHeight: 1.6,
-            }}
-          >
-            {JSON.stringify(record.evidence, null, 2)}
-          </pre>
+          <EvidencePanel
+            leakageType={record.leakage_type}
+            evidence={record.evidence}
+            confidence={record.confidence}
+            ruleApplied={record.rule_applied}
+            vendorName={record.vendor_name}
+            explanation={record.explanation}
+            currency={record.currency}
+          />
         </Card>
       )}
 
-      {/* Review history */}
       {record.reviewed_by && (
         <Card style={{ marginBottom: 'var(--space-6)' }}>
           <h3 style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--space-4)' }}>
             Review
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-4)' }}>
             <DetailField label="Reviewed By" value={record.reviewed_by} />
-            <DetailField label="Reviewed At" value={record.reviewed_at ? new Date(record.reviewed_at).toLocaleDateString() : '—'} />
+            <DetailField label="Reviewed At" value={formatDateValue(record.reviewed_at)} />
           </div>
           {record.review_notes && (
             <div style={{ marginTop: 'var(--space-3)' }}>
@@ -182,7 +175,6 @@ export default function LeakageDetailPage() {
         </Card>
       )}
 
-      {/* PENDING_FX_RATE info banner */}
       {record.status === 'PENDING_FX_RATE' && (
         <Card
           style={{
@@ -203,7 +195,6 @@ export default function LeakageDetailPage() {
         </Card>
       )}
 
-      {/* Action buttons — ONLY for PENDING status, NEVER for PENDING_FX_RATE */}
       {canReview && (
         <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
           <Button
@@ -221,7 +212,6 @@ export default function LeakageDetailPage() {
         </div>
       )}
 
-      {/* Reject modal */}
       <Modal
         open={showRejectModal}
         onClose={() => setShowRejectModal(false)}
@@ -267,13 +257,13 @@ export default function LeakageDetailPage() {
   );
 }
 
-function DetailField({ label, value }: { label: string; value: string }) {
+function DetailField({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div>
       <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 'var(--space-1)' }}>
         {label}
       </div>
-      <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>{value}</div>
+      <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>{value || EMPTY_VALUE}</div>
     </div>
   );
 }

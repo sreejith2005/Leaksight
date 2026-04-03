@@ -158,7 +158,12 @@ def test_get_record_detail():
     record = _mock_record()
 
     result = MagicMock()
-    result.scalar_one_or_none.return_value = record
+    row = MagicMock()
+    row.__getitem__.side_effect = [record]
+    row.vendor_name = "Tata Steel"
+    row.invoice_no = "INV-001"
+    row.invoice_date = "2024-06-15"
+    result.first.return_value = row
     db.execute.return_value = result
 
     app = _create_app(user=_make_user(), db_mock=db)
@@ -170,6 +175,10 @@ def test_get_record_detail():
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == str(RECORD_ID)
+    assert data["run_id"] == str(RUN_ID)
+    assert data["vendor_name"] == "Tata Steel"
+    assert data["invoice_no"] == "INV-001"
+    assert data["invoice_date"] == "2024-06-15"
     assert "evidence" in data
     assert data["evidence"]["invoice_ref"] == "INV-001"
 
@@ -182,7 +191,7 @@ def test_get_record_other_tenant():
     db = _make_db()
 
     result = MagicMock()
-    result.scalar_one_or_none.return_value = None
+    result.first.return_value = None
     db.execute.return_value = result
 
     app = _create_app(user=_make_user(), db_mock=db)

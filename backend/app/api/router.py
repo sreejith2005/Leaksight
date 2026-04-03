@@ -19,6 +19,7 @@ from backend.app.api.endpoints.leakage import router as leakage_endpoint_router
 from backend.app.api.endpoints.notifications import router as notifications_endpoint_router
 from backend.app.api.endpoints.reports import router as reports_endpoint_router
 from backend.app.api.endpoints.vendors import router as vendors_endpoint_router
+from backend.app.tools.document_integrity.router import router as integrity_router
 
 # --- Master v1 router ---
 api_v1_router = APIRouter(prefix="/api/v1")
@@ -69,6 +70,9 @@ admin_router.include_router(admin_endpoint_router)
 notifications_router = APIRouter(prefix="/notifications", tags=["notifications"])
 notifications_router.include_router(notifications_endpoint_router)
 
+integrity_api_router = APIRouter(prefix="/integrity", tags=["integrity"])
+integrity_api_router.include_router(integrity_router)
+
 # --- Include all sub-routers into the master v1 router ---
 api_v1_router.include_router(health_router)
 api_v1_router.include_router(auth_router)
@@ -79,3 +83,4 @@ api_v1_router.include_router(contracts_router)
 api_v1_router.include_router(reports_router)
 api_v1_router.include_router(admin_router)
 api_v1_router.include_router(notifications_router)
+api_v1_router.include_router(integrity_api_router)

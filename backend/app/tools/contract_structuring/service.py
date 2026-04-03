@@ -9,7 +9,10 @@ from backend.app.tools.contract_structuring.models import (
     ContractStructuringRun,
     ContractStructuringRunDocument,
 )
-from backend.app.tools.contract_structuring.tasks import structure_single_contract
+from backend.app.tools.contract_structuring.tasks import (
+    _update_structuring_run_status_async,
+    structure_single_contract,
+)
 
 
 async def create_structuring_run(
@@ -46,14 +49,27 @@ async def create_structuring_run(
 
     await db.flush()
 
-    for run_doc in run_docs:
-        structure_single_contract.delay(
-            str(run_doc.document_id),
-            str(run_doc.id),
-            str(tenant_id),
-        )
-
     run.started_at = datetime.now(timezone.utc)
     await db.commit()
+
+    dispatch_failed = False
+    for run_doc in run_docs:
+        try:
+            structure_single_contract.delay(
+                str(run_doc.document_id),
+                str(run_doc.id),
+                str(tenant_id),
+            )
+        except Exception as exc:
+            dispatch_failed = True
+            run_doc.task_status = "FAILED"
+            run_doc.error_message = (
+                f"Task dispatch failed: {type(exc).__name__}: {exc}"
+            )
+            run_doc.processing_time_seconds = 0.0
+
+    if dispatch_failed:
+        await db.commit()
+        await _update_structuring_run_status_async(run.id, tenant_id)
 
     return run.id

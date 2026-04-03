@@ -10,7 +10,9 @@ Open **two separate terminals** in the project folder:
 ```powershell
 .venvScriptsActivate.ps1.venvScriptspython.exe -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```
-or 
+
+or
+
 ```
 python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -20,7 +22,9 @@ python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```powershell
 .venvScriptsActivate.ps1.venvScriptspython.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring
 ```
+
 or
+
 ```
 python -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring
 ```
