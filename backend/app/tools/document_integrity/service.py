@@ -62,10 +62,6 @@ class DocumentIntegrityService:
         if not hash_rows:
             raise LookupError("DocumentHashNotFound")
 
-        baseline_hash = next(
-            (row for row in hash_rows if str(row.hash_type) == "BASELINE"),
-            hash_rows[0],
-        )
         current_hash = hash_rows[-1]
 
         file_path = self._resolve_current_file_path(document.file_path)
@@ -75,12 +71,20 @@ class DocumentIntegrityService:
             tenant_id=str(tenant_uuid),
             db_session=db_session,
         )
+        comparison_hash = self._load_comparison_hash(
+            comparison_hash_id=hash_result.get("previous_version_id"),
+            tenant_id=tenant_uuid,
+            db_session=db_session,
+        )
 
         current_numerics = self.numeric_comparator.extract_numerics(file_path)
         previous_numerics: list[dict[str, Any]] = []
         previous_file_path = self._resolve_previous_file_path(
-            baseline_hash=baseline_hash,
             current_hash=current_hash,
+            comparison_hash=comparison_hash,
+            current_document=document,
+            tenant_id=tenant_uuid,
+            db_session=db_session,
         )
         if previous_file_path is not None and previous_file_path.exists():
             previous_numerics = self.numeric_comparator.extract_numerics(previous_file_path)
@@ -97,7 +101,7 @@ class DocumentIntegrityService:
 
         current_hash.metadata_jsonb = metadata
         current_hash.comparison_status = hash_result["status"]
-        current_hash.comparison_against_id = baseline_hash.id
+        current_hash.comparison_against_id = comparison_hash.id if comparison_hash is not None else None
         current_hash.risk_score = score
         current_hash.flagged_anomalies_jsonb = {
             "flags": flags,
@@ -129,15 +133,30 @@ class DocumentIntegrityService:
 
     def _resolve_previous_file_path(
         self,
-        baseline_hash: DocumentHash,
         current_hash: DocumentHash,
+        comparison_hash: DocumentHash | None,
+        current_document: Document,
+        tenant_id: UUID,
+        db_session,
     ) -> Path | None:
-        if baseline_hash.id == current_hash.id:
+        if comparison_hash is None:
             return None
+
+        if comparison_hash.document_id != current_document.id:
+            previous_document = db_session.execute(
+                select(Document).where(
+                    Document.id == comparison_hash.document_id,
+                    Document.tenant_id == tenant_id,
+                )
+            ).scalar_one_or_none()
+            if previous_document is None:
+                return None
+
+            return self._resolve_current_file_path(previous_document.file_path)
 
         metadata_candidates = [
             getattr(current_hash, "metadata_jsonb", None),
-            getattr(baseline_hash, "metadata_jsonb", None),
+            getattr(comparison_hash, "metadata_jsonb", None),
         ]
         for candidate in metadata_candidates:
             if not isinstance(candidate, dict):
@@ -150,3 +169,20 @@ class DocumentIntegrityService:
                 return path
             return Path(get_settings().document_storage_path) / path
         return None
+
+    @staticmethod
+    def _load_comparison_hash(
+        comparison_hash_id: object,
+        tenant_id: UUID,
+        db_session,
+    ) -> DocumentHash | None:
+        if not comparison_hash_id:
+            return None
+
+        comparison_hash_uuid = UUID(str(comparison_hash_id))
+        return db_session.execute(
+            select(DocumentHash).where(
+                DocumentHash.id == comparison_hash_uuid,
+                DocumentHash.tenant_id == tenant_id,
+            )
+        ).scalar_one_or_none()

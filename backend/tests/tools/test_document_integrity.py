@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.core.database import get_db
 from backend.app.core.security import CurrentUser, get_current_user
+from backend.app.tools.document_integrity.analyzers.hash_comparator import HashComparator
 from backend.app.tools.document_integrity.analyzers.metadata_extractor import MetadataExtractor
 from backend.app.tools.document_integrity.analyzers.numeric_comparator import NumericComparator
 from backend.app.tools.document_integrity.analyzers.risk_scorer import RiskScorer
@@ -205,6 +206,57 @@ def test_numeric_comparator_compare_changed_value_returns_change_pct():
     assert changes[0]["change_pct"] == 25.0
 
 
+def test_hash_comparator_uses_previous_document_with_same_filename():
+    tenant_id = uuid.uuid4()
+    previous_document_id = uuid.uuid4()
+    previous_hash_id = uuid.uuid4()
+    db_session = MagicMock()
+
+    current_document = SimpleNamespace(
+        id=DOCUMENT_ID,
+        tenant_id=tenant_id,
+        original_filename="Sample Invoice.xlsx",
+        doc_type="INVOICE",
+    )
+    current_hash = SimpleNamespace(
+        id=HASH_ID,
+        document_id=DOCUMENT_ID,
+        tenant_id=tenant_id,
+        hash_sha256="b" * 64,
+        upload_sequence=1,
+    )
+    previous_document = SimpleNamespace(
+        id=previous_document_id,
+        tenant_id=tenant_id,
+        original_filename="Sample Invoice.xlsx",
+        doc_type="INVOICE",
+    )
+    previous_hash = SimpleNamespace(
+        id=previous_hash_id,
+        document_id=previous_document_id,
+        tenant_id=tenant_id,
+        hash_sha256="a" * 64,
+        upload_sequence=1,
+    )
+
+    db_session.execute.side_effect = [
+        MagicMock(scalar_one_or_none=MagicMock(return_value=current_document)),
+        MagicMock(scalars=MagicMock(return_value=[current_hash])),
+        MagicMock(scalars=MagicMock(return_value=[previous_document])),
+        MagicMock(scalars=MagicMock(return_value=MagicMock(first=MagicMock(return_value=previous_hash)))),
+    ]
+
+    result = HashComparator().compare(
+        document_id=str(DOCUMENT_ID),
+        tenant_id=str(tenant_id),
+        db_session=db_session,
+    )
+
+    assert result["status"] == "MODIFIED"
+    assert result["previous_version_id"] == str(previous_hash_id)
+    assert result["version_count"] == 2
+    assert result["hash_changed"] is True
+
 def test_post_analyze_document_returns_202():
     db = _db()
     db.scalar = AsyncMock(return_value=_document())
@@ -247,3 +299,37 @@ def test_get_integrity_documents_returns_list():
     assert len(payload["items"]) == 1
     assert payload["items"][0]["document_id"] == str(DOCUMENT_ID)
     assert payload["items"][0]["risk_level"] == "HIGH"
+
+
+def test_get_integrity_document_keeps_null_risk_fields():
+    db = _db()
+    pending_hash = SimpleNamespace(
+        id=HASH_ID,
+        document_id=DOCUMENT_ID,
+        tenant_id=TENANT_ID,
+        risk_score=None,
+        comparison_status="NEW",
+        flagged_anomalies_jsonb=None,
+        metadata_jsonb=None,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.scalar = AsyncMock(return_value=_document())
+    db.execute = AsyncMock(
+        side_effect=[
+            MagicMock(scalars=MagicMock(return_value=[pending_hash])),
+            _scalar_one_result(2),
+        ]
+    )
+
+    app = _create_app(user=_user(), db_mock=db)
+    client = TestClient(app)
+
+    with patch("backend.app.tools.document_integrity.router.set_tenant_context", new_callable=AsyncMock):
+        response = client.get(f"/api/v1/integrity/documents/{DOCUMENT_ID}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["risk_score"] is None
+    assert payload["risk_level"] is None
+    assert payload["version_count"] == 2
+    assert payload["analyzed_at"] is None

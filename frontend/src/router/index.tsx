@@ -19,6 +19,8 @@ const NewStructuringRunPage = lazy(() => import('../pages/structuring/NewStructu
 const StructuringRunDetailPage = lazy(() => import('../pages/structuring/StructuringRunDetailPage'));
 const ContractReviewPage = lazy(() => import('../pages/structuring/ContractReviewPage'));
 const StructuringExportPage = lazy(() => import('../pages/structuring/StructuringExportPage'));
+const IntegrityPage = lazy(() => import('../pages/integrity/IntegrityPage'));
+const IntegrityDetailPage = lazy(() => import('../pages/integrity/IntegrityDetailPage'));
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -164,6 +166,22 @@ export const router = createBrowserRouter([
         element: (
           <SuspenseWrapper>
             <StructuringExportPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'integrity',
+        element: (
+          <SuspenseWrapper>
+            <IntegrityPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'integrity/:documentId',
+        element: (
+          <SuspenseWrapper>
+            <IntegrityDetailPage />
           </SuspenseWrapper>
         ),
       },

@@ -21,6 +21,7 @@
 3. Click **Login**
 4. You should land on the **Dashboard** page
 
+
 **What to observe**: Login is instant. JWT token is stored in the browser. If you see a redirect back to login, the backend may be down.
 
 ---

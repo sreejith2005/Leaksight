@@ -3,7 +3,7 @@
 ## Quick Start
 
 Open **two separate terminals** in the project folder:  
-`c:UsersLENOVODownloadsLeaksight v1 -1`
+`D:\c\Downloads\Leaksight v1 -1`
 
 ### Terminal 1 — Backend (port 8000)
 
@@ -20,7 +20,7 @@ python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ### Terminal 2 — Celery Worker
 
 ```powershell
-.venvScriptsActivate.ps1.venvScriptspython.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring
+.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q 'default,parse,analysis,structuring'
 ```
 
 or

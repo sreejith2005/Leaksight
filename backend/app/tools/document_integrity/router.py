@@ -50,14 +50,14 @@ def _build_report(document: Document, document_hash: DocumentHash, version_count
         document_id=str(document.id),
         filename=document.original_filename,
         doc_type=str(document.doc_type),
-        risk_score=int(document_hash.risk_score or 0),
-        risk_level=risk_level_from_score(document_hash.risk_score) or "LOW",
+        risk_score=document_hash.risk_score,
+        risk_level=risk_level_from_score(document_hash.risk_score),
         comparison_status=str(document_hash.comparison_status),
         version_count=version_count,
         flags=[str(flag) for flag in (raw_flags or [])],
         numeric_changes=[NumericChange.model_validate(change) for change in (raw_numeric_changes or [])],
         metadata=document_hash.metadata_jsonb or {},
-        analyzed_at=document_hash.created_at,
+        analyzed_at=document_hash.created_at if document_hash.risk_score is not None else None,
     )
 
 
@@ -205,7 +205,21 @@ async def get_integrity_document(
         _not_found()
 
     latest_hash = hash_rows[-1]
-    return _build_report(document, latest_hash, len(hash_rows))
+    version_count = len(hash_rows)
+    if version_count == 1:
+        version_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(Document)
+                .where(
+                    Document.tenant_id == tenant_id,
+                    Document.original_filename == document.original_filename,
+                    Document.doc_type == document.doc_type,
+                )
+            )
+        ).scalar_one()
+
+    return _build_report(document, latest_hash, int(version_count))
 
 
 @router.post("/analyze-batch")

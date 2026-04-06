@@ -16,9 +16,9 @@ leaksight_MASTER_PROJECT_CONTEXT_FILE.docx  → Core product philosophy, three-t
 
 ## Environment
 
--   Project root: `C:UsersLENOVODownloadsLeaksight v1 -1`
+-   Project root: `D:\c\Downloads\Leaksight v1 -1`
 -   Python binary: `.venvScriptspython.exe` — NEVER use `python` or `py` directly
--   PostgreSQL: Docker, port **5434** (NOT 5432), database `leaksight_dev`, user `leaksight_user`, password `devpassword123`
+-   PostgreSQL: Docker, port **5434** (NOT 5432), database `leaksight_dev`, user `leaksight_user`, password `testpass123`
 -   Redis: Docker, port 6379
 -   Backend: FastAPI on port 8000
 -   Frontend: React/Vite on port 5173
@@ -46,14 +46,17 @@ Three terminals required, always from project root:
 ```
 
 `--pool=solo` is mandatory on Windows. All four queues must be included.
+Verify `document_integrity.run_analysis` appears in `celery inspect registered`; if it is missing, Tool B analyze requests will queue but never persist results.
 
 **Terminal 3 — Frontend:**
 
 ```
 cd frontend && npm run dev
 ```
+Use npm.cmd instead of npm in PowerShell on this machine
 
 Docker Desktop must be running before any of the above. Verify with `docker ps` — you should see `leaksightv1-1-postgres-1` and `leaksightv1-1-redis-1`.
+Docker command is docker compose -f docker-compose.dev.yml up -d on this machine — not docker compose up -d
 
 ---
 
@@ -80,7 +83,7 @@ Three modules, all in the same monolith:
 
 **Tool A** — Contract Structuring & ERP Mapping Engine (COMPLETE)Extracts pricing tables and commercial clauses from contract documents. Exports to Excel, ERP JSON, or directly into the core module's canonical contract tables via LeakSight Import.
 
-**Tool B** — Document Integrity & Tamper Detection Engine (NOT BUILT)Priority 3 per PRD v1.1 — build after Tool A is in production. SHA-256 hashing foundation already exists in `document_hashes` table.
+**Tool B** — Document Integrity & Tamper Detection Engine (IN PROGRESS)Priority 3 per PRD v1.1 — build after Tool A is in production. SHA-256 hashing foundation already exists in `document_hashes` table. Version comparison must treat same-tenant uploads with the same `original_filename` and `doc_type` as prior versions even when they create a new `document_id`.
 
 ---
 
@@ -215,11 +218,11 @@ Run from project root:
 .venvScriptspython.exe -m pytest backend/tests/ --tb=short -q
 ```
 
-**Current baseline: 663 passed, 17 skipped, 14 errors**
+**Current baseline: 695 passed, 17 skipped, 14 errors**
 
 The 14 errors are pre-existing — `test_phase2_models.py` attempts PostgreSQL connection on port 5599 which does not exist. These are NOT regressions. Ignore them.
 
-A real regression = passed count drops below 663 OR a previously passing test now fails.
+A real regression = passed count drops below 695 OR a previously passing test now fails.
 
 Tool A tests only:
 
@@ -230,8 +233,13 @@ Tool A tests only:
 TypeScript check (must be zero errors before any frontend change is complete):
 
 ```
-cd frontend && npx tsc --noEmit
+cd frontend && npm.cmd exec -- tsc --noEmit
 ```
+
+Tool B verification notes:
+
+- `GET /api/v1/integrity/documents/{id}` must preserve `risk_score = null` until Celery writes the analysis result. Do not coerce pending analysis to `0`.
+- The integrity detail page polls the report endpoint every 3 seconds while `risk_score` is `null` and stops when a non-null score is returned.
 
 ---
 

@@ -64,7 +64,7 @@ At line:1 char:49
    ::String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-  File "C:\Users\LENOVO\Downloads\Leaksight v1 -1\extract_docx.py", line 8, in 
+  File "D:\c\Downloads\Leaksight v1 -1\extract_docx.py", line 8, in 
 <module>
     print(p.text)
     ~~~~~^^^^^^^^

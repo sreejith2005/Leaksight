@@ -20,14 +20,14 @@ class IntegrityReport(BaseModel):
     document_id: str
     filename: str
     doc_type: str
-    risk_score: int
-    risk_level: str
+    risk_score: int | None
+    risk_level: str | None
     comparison_status: str
     version_count: int
     flags: list[str]
     numeric_changes: list[NumericChange]
     metadata: dict[str, Any]
-    analyzed_at: datetime
+    analyzed_at: datetime | None
 
 
 class IntegrityListItem(BaseModel):
