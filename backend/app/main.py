@@ -25,6 +25,7 @@ from backend.app.core.middleware import (
     TenantContextMiddleware,
 )
 from backend.app.tools.contract_structuring.router import router as structuring_router
+from backend.app.tools.document_revalidation.router import router as revalidation_router
 
 logger = get_logger(__name__)
 
@@ -91,6 +92,11 @@ def create_app() -> FastAPI:
         structuring_router,
         prefix="/api/v1/structuring",
         tags=["Contract Structuring"],
+    )
+    app.include_router(
+        revalidation_router,
+        prefix="/api/v1/revalidation",
+        tags=["Document Revalidation"],
     )
 
     return app

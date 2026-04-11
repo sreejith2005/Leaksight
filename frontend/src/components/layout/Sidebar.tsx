@@ -1,10 +1,18 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 
-const CORE_NAV_ITEMS = [
+interface NavItem {
+  to: string;
+  label: string;
+  icon: React.ReactNode;
+  exact?: boolean;
+}
+
+const CORE_NAV_ITEMS: NavItem[] = [
   {
     to: '/',
     label: 'Dashboard',
+    exact: true,
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -49,7 +57,7 @@ const CORE_NAV_ITEMS = [
   },
 ];
 
-const STRUCTURING_NAV_ITEMS = [
+const STRUCTURING_NAV_ITEMS: NavItem[] = [
   {
     to: '/structuring',
     label: 'Contract Structuring',
@@ -64,7 +72,7 @@ const STRUCTURING_NAV_ITEMS = [
   },
 ];
 
-const INTEGRITY_NAV_ITEMS = [
+const INTEGRITY_NAV_ITEMS: NavItem[] = [
   {
     to: '/integrity',
     label: 'Document Integrity',
@@ -77,7 +85,33 @@ const INTEGRITY_NAV_ITEMS = [
   },
 ];
 
-const SUPPORT_NAV_ITEMS = [
+const REVALIDATION_ICON = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+    <path d="m9 12 2 2 4-4" />
+  </svg>
+);
+
+const REVALIDATION_NAV_ITEMS: NavItem[] = [
+  {
+    to: '/revalidation',
+    label: 'Dashboard',
+    exact: true,
+    icon: REVALIDATION_ICON,
+  },
+  {
+    to: '/revalidation/subjects',
+    label: 'Subjects',
+    icon: REVALIDATION_ICON,
+  },
+  {
+    to: '/revalidation/alerts',
+    label: 'Alerts',
+    icon: REVALIDATION_ICON,
+  },
+];
+
+const SUPPORT_NAV_ITEMS: NavItem[] = [
   {
     to: '/vendors',
     label: 'Vendors',
@@ -130,6 +164,7 @@ const NAV_SECTIONS = [
   { title: '', items: CORE_NAV_ITEMS },
   { title: 'Contract Structuring', items: STRUCTURING_NAV_ITEMS },
   { title: 'Document Integrity', items: INTEGRITY_NAV_ITEMS },
+  { title: 'Document Revalidation', items: REVALIDATION_NAV_ITEMS },
   { title: '', items: SUPPORT_NAV_ITEMS },
 ];
 
@@ -201,10 +236,9 @@ export function Sidebar() {
               </div>
             )}
             {section.items.map((item) => {
-              const isActive =
-                item.to === '/'
-                  ? location.pathname === '/'
-                  : location.pathname.startsWith(item.to);
+              const isActive = item.exact
+                ? location.pathname === item.to
+                : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
 
               return (
                 <NavLink

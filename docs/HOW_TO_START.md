@@ -34,7 +34,8 @@ python -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=so
 ### Terminal 3 — Frontend (port 5173)
 
 ```powershell
-cd frontendnpm run dev
+cd frontend
+npm.cmd run dev
 ```
 
 ### Verify

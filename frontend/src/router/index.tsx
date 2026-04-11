@@ -21,6 +21,10 @@ const ContractReviewPage = lazy(() => import('../pages/structuring/ContractRevie
 const StructuringExportPage = lazy(() => import('../pages/structuring/StructuringExportPage'));
 const IntegrityPage = lazy(() => import('../pages/integrity/IntegrityPage'));
 const IntegrityDetailPage = lazy(() => import('../pages/integrity/IntegrityDetailPage'));
+const RevalidationDashboardPage = lazy(() => import('../pages/revalidation/RevalidationDashboardPage'));
+const SubjectsPage = lazy(() => import('../pages/revalidation/SubjectsPage'));
+const SubjectDetailPage = lazy(() => import('../pages/revalidation/SubjectDetailPage'));
+const AlertsPage = lazy(() => import('../pages/revalidation/AlertsPage'));
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -182,6 +186,38 @@ export const router = createBrowserRouter([
         element: (
           <SuspenseWrapper>
             <IntegrityDetailPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'revalidation',
+        element: (
+          <SuspenseWrapper>
+            <RevalidationDashboardPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'revalidation/subjects',
+        element: (
+          <SuspenseWrapper>
+            <SubjectsPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'revalidation/subjects/:subjectId',
+        element: (
+          <SuspenseWrapper>
+            <SubjectDetailPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'revalidation/alerts',
+        element: (
+          <SuspenseWrapper>
+            <AlertsPage />
           </SuspenseWrapper>
         ),
       },

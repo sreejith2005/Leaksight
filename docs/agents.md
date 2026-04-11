@@ -42,10 +42,10 @@ Three terminals required, always from project root:
 **Terminal 2 — Celery Worker:**
 
 ```
-.venvScriptspython.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring
+.venvScriptspython.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring,revalidation
 ```
 
-`--pool=solo` is mandatory on Windows. All four queues must be included.
+`--pool=solo` is mandatory on Windows. All five queues must be included.
 Verify `document_integrity.run_analysis` appears in `celery inspect registered`; if it is missing, Tool B analyze requests will queue but never persist results.
 
 **Terminal 3 — Frontend:**
@@ -73,7 +73,7 @@ Docker command is docker compose -f docker-compose.dev.yml up -d on this machine
 
 ## Product Structure
 
-Three modules, all in the same monolith:
+Four modules, all in the same monolith:
 
 **Core Module** — Vendor Price Leakage Detection Engine (COMPLETE)Detects three types of financial leakage:
 
@@ -85,6 +85,11 @@ Three modules, all in the same monolith:
 
 **Tool B** — Document Integrity & Tamper Detection Engine (IN PROGRESS)Priority 3 per PRD v1.1 — build after Tool A is in production. SHA-256 hashing foundation already exists in `document_hashes` table. Version comparison must treat same-tenant uploads with the same `original_filename` and `doc_type` as prior versions even when they create a new `document_id`.
 
+**Tool C** — Company & Employee Document Revalidation Engine (COMPLETE)
+Tracks expiry and validity of employee and vendor compliance documents.
+Classifies documents, extracts dates via regex and NLP, alerts on expiry,
+supports manual date entry, and tracks compliance per subject.
+
 ---
 
 ## Project Structure
@@ -93,15 +98,31 @@ Three modules, all in the same monolith:
 backend/  app/    api/              # Core module API routers    core/             # Celery, config, DB session, security, middleware    db/               # Alembic migrations    models/           # SQLAlchemy ORM models (core module)    parsers/          # Document parsers (PDF, Excel, Word, OCR)    matching/         # Vendor normalization, fuzzy matching    rules/            # Leakage detection rules engine    reporting/        # WeasyPrint PDF reports, Excel export    services/         # Business logic layer    tasks/            # Celery task definitions (default, parse, analysis queues)    tools/      contract_structuring/    # ALL Tool A code lives here        extractors/            # pdf_extractor, docx_extractor, excel_extractor                               # table_normalizer, clause_extractor                               # multi_page_stitcher, version_detector        exporters/             # excel_exporter, erp_json_exporter        models.py              # Tool A SQLAlchemy models        schemas.py             # Pydantic request/response schemas        router.py              # FastAPI router mounted at /api/v1/structuring        service.py             # create_structuring_run()        tasks.py               # Celery tasks on structuring queue  tests/    tools/            # Tool A unit and API tests    test_*.py         # Core module testsfrontend/  src/    api/              # All API calls (leakage.ts, structuring.ts, contracts.ts, etc.)    components/      layout/         # Sidebar, TopBar, Layout      structuring/    # Tool A: LineItemTable, ClausePanel, ConfidenceFlag,                      #         ColumnRoleMapper, StructuringRunCard      ui/             # Shared: DataTable, StatusBadge, GiltDivider, MetricDisplay,                      #         ConfidenceBar, SectionHeader, FormField etc.    pages/      structuring/    # Tool A pages: Runs, NewRun, RunDetail, ContractReview, Export      *.tsx           # Core module pages: Dashboard, Upload, LeakageReview,                      #                   Vendors, Contracts, Reports, Admindata/  demo/               # Core module demo files (Contracts_Demo.xlsx etc.)  demo_tool_a/        # Tool A demo files (CTR-TOOL-001_v1.xlsx etc.)
 ```
 
+Tool C backend code lives under `backend/app/tools/document_revalidation/`. Its API router is mounted at `/api/v1/revalidation`, and its Celery tasks run on the `revalidation` queue.
+
+Under `tools/`, Tool C structure is:
+
+```
+document_revalidation/  # ALL Tool C code lives here
+  date_extractor.py     # spaCy + regex date extraction from raw_parses
+  models.py             # 4 SQLAlchemy models
+  schemas.py            # Pydantic V2 schemas
+  service.py            # Business logic, _compute_status, expiry check
+  tasks.py              # Celery tasks on revalidation queue
+  router.py             # FastAPI router at /api/v1/revalidation
+```
+
 ---
 
 ## Database
 
-### Current Tables (30 total)
+### Current Tables (34 total)
 
 **Core Module tables:** `tenants`, `users`, `documents`, `raw_parses`, `vendors`, `vendor_aliases`, `canonical_units`, `unit_conversion_factors`, `fx_rates`, `contracts`, `contract_versions`, `contract_line_items`, `invoices`, `invoice_line_items`, `purchase_orders`, `po_line_items`, `grns`, `grn_line_items`, `analysis_runs`, `leakage_records`, `document_hashes`, `tenant_settings`, `notifications`
 
 **Tool A tables:** `contract_structuring_runs`, `contract_structuring_run_documents`, `raw_contract_tables`, `extracted_line_items`, `extracted_clauses`, `contract_structuring_exports`
+
+**Tool C tables:** `revalidation_subjects`, `revalidation_doc_catalog`, `revalidation_documents`, `revalidation_alerts`
 
 ### Database Rules
 
@@ -199,6 +220,7 @@ Dark mode is default. Light mode available via toggle in TopBar.
 
 -   All core module endpoints under `/api/v1/`
 -   Tool A endpoints under `/api/v1/structuring/`
+-   Tool C endpoints under `/api/v1/revalidation/`
 -   Auth: JWT Bearer token from `POST /api/v1/auth/token` with `{email, password}`
 -   Pagination: `page` (default 1), `page_size` (default 20, max 100)
 -   Error format: `{"detail": "message"}`
@@ -218,11 +240,11 @@ Run from project root:
 .venvScriptspython.exe -m pytest backend/tests/ --tb=short -q
 ```
 
-**Current baseline: 695 passed, 17 skipped, 14 errors**
+**Current baseline: 719 passed, 17 skipped, 14 errors**
 
 The 14 errors are pre-existing — `test_phase2_models.py` attempts PostgreSQL connection on port 5599 which does not exist. These are NOT regressions. Ignore them.
 
-A real regression = passed count drops below 695 OR a previously passing test now fails.
+A real regression = passed count drops below 719 OR a previously passing test now fails.
 
 Tool A tests only:
 
@@ -269,6 +291,7 @@ Produces 8 confirmed line items for CTR-TOOL-001 (Acme Supplies Ltd) written to 
 
 ```
 _upload_demo_data.py              # Core module demo upload + verification_run_tool_a_demo.py               # Tool A end-to-end verification_generate_tool_a_demo_data.py     # Generate Tool A demo Excel files_run_tool_a_structuring.py        # Manual Tool A pipeline test
+_run_revalidation_demo.py         # Tool C end-to-end verification
 ```
 
 ---
@@ -293,8 +316,9 @@ Full list in `KNOWN_UX_ISSUES.md`.
 -   Never change existing Celery queue names — only add to them
 -   Never modify leakage engine logic when working on Tool A or Tool B
 -   Never add backward compatibility — system is pre-launch with no real data
--   The 663 test baseline must be maintained after every change
+-   The 719 test baseline must be maintained after every change
 -   When adding a DB column, always check if it also needs updating in: SQLAlchemy model, Pydantic schema, API response mapping, TypeScript interface, and frontend component
 -   spaCy model loaded once at module level — never inside a loop or per-document function
 -   All Tool A code stays under `backend/app/tools/contract_structuring/`
+-   All Tool C code stays under `backend/app/tools/document_revalidation/`
 -   Do not scatter new files outside their designated module directory

@@ -27,3 +27,9 @@ from backend.app.tools.contract_structuring.models import (  # noqa: F401
     ExtractedClause,
     ContractStructuringExport,
 )
+from backend.app.tools.document_revalidation.models import (  # noqa: F401
+    RevalidationAlert,
+    RevalidationDocCatalog,
+    RevalidationDocument,
+    RevalidationSubject,
+)

@@ -18,6 +18,7 @@ Configuration:
 import os
 
 from celery import Celery
+from kombu import Queue
 
 from backend.app.core.config import get_settings
 
@@ -70,10 +71,20 @@ celery_app.conf.task_routes = {
     "backend.app.tools.contract_structuring.tasks.generate_structuring_export": {
         "queue": "structuring"
     },
+    "revalidation.extract_dates": {"queue": "revalidation"},
+    "revalidation.daily_expiry_check": {"queue": "revalidation"},
+    "revalidation.bulk_check_all": {"queue": "revalidation"},
 }
 
 # --- Default queue for any unrouted tasks ---
 celery_app.conf.task_default_queue = "default"
+celery_app.conf.task_queues = (
+    Queue("default"),
+    Queue("parse"),
+    Queue("analysis"),
+    Queue("structuring"),
+    Queue("revalidation"),
+)
 
 # --- Explicitly import and register task modules ---
 celery_app.conf.include = [
@@ -82,4 +93,5 @@ celery_app.conf.include = [
     "backend.app.tasks.analysis_run_task",
     "backend.app.tools.document_integrity.tasks",
     "backend.app.tools.contract_structuring.tasks",
+    "backend.app.tools.document_revalidation.tasks",
 ]
