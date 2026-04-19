@@ -46,6 +46,7 @@ Three terminals required, always from project root:
 ```
 
 `--pool=solo` is mandatory on Windows. All five queues must be included.
+The `-Q default,parse,analysis,structuring,revalidation` list is unchanged for the security hardening work. No new queues were added.
 Verify `document_integrity.run_analysis` appears in `celery inspect registered`; if it is missing, Tool B analyze requests will queue but never persist results.
 
 **Terminal 3 — Frontend:**
@@ -234,6 +235,17 @@ Dark mode is default. Light mode available via toggle in TopBar.
 
 ## Testing
 
+## Security
+
+Six security measures implemented:
+
+1. Brute force protection: 10 failed attempts in 15 min → 429 lockout
+2. JWT expiry (60 min) + logout blacklist via `revoked_tokens` table
+3. File upload validation: magic bytes, filename sanitisation, ZIP bomb checks
+4. Security headers on all API responses via middleware
+5. Authentication audit trail: `LOGIN_FAILED` and `LOGIN_SUCCESS` in `audit_logs`
+6. Security runbook at `docs/SECURITY_RUNBOOK.md`
+
 Run from project root:
 
 ```
@@ -305,6 +317,18 @@ These are documented, intentional limitations:
 -   Progress percentage can show >100% — cosmetic only, no functional impact
 -   Export listing may appear empty immediately after triggering — refresh after 3–5 seconds (Celery timing)
 -   Dashboard KPIs show latest run only — by design for V1
+
+Tool A extraction pipeline: Format-agnostic as of this fix.
+- TableNormalizer handles any table structure via fuzzy role matching
+  and positional fallback. Never rejects tables for having unusual headers.
+- Currency resolved via 4-level priority chain: column header >
+  cell symbol > document default > None. Never defaults to INR.
+- Multiple price columns produce multiple line items (one per currency column).
+- MULTI_CURRENCY_CONFLICT only fires on genuinely ambiguous single columns.
+- PDF: tiered strategy (pdfplumber default → text mode → camelot lattice →
+  camelot stream → text regex → OCR). Never returns zero without trying all.
+- DOCX: table extraction with paragraph fallback.
+- Excel: all sheets processed, dynamic header detection.
 
 Full list in `KNOWN_UX_ISSUES.md`.
 

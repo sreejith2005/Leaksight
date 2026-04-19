@@ -12,7 +12,7 @@ Tests:
 5. get_current_user → valid JWT returns CurrentUser
 6. get_current_user → missing tenant_id → 401
 7. get_current_user → missing Authorization header → 401
-8. POST /token → new user auto-registers (V1)
+8. POST /token → unknown email returns generic 401
 9. POST /token → existing user valid password → 200
 10. POST /token → existing user wrong password → 401
 11. POST /token → deactivated user → 401
@@ -69,6 +69,7 @@ def _make_token(
         "tenant_id": str(tenant_id),
         "email": email,
         "role": role,
+        "jti": str(uuid.uuid4()),
         "exp": expire,
     }
     return jose_jwt.encode(payload, secret, algorithm=ALGORITHM)
@@ -91,6 +92,7 @@ def test_create_access_token_valid():
     assert payload["tenant_id"] == str(TENANT_ID)
     assert payload["email"] == EMAIL
     assert payload["role"] == "ADMIN"
+    assert "jti" in payload
     assert "exp" in payload
 
 
@@ -106,6 +108,7 @@ def test_decode_jwt_valid():
     assert payload["tenant_id"] == str(TENANT_ID)
     assert payload["email"] == EMAIL
     assert payload["role"] == "ADMIN"
+    assert "jti" in payload
 
 
 # ── Test 3: decode_jwt with expired token → 401 ──────────────────────
@@ -121,7 +124,7 @@ def test_decode_jwt_expired():
         decode_jwt(token)
 
     assert exc_info.value.status_code == 401
-    assert "Invalid or expired token" in str(exc_info.value.detail)
+    assert "Token expired" in str(exc_info.value.detail)
 
 
 # ── Test 4: decode_jwt with tampered signature → 401 ─────────────────
@@ -148,6 +151,9 @@ async def test_get_current_user_valid():
     """get_current_user returns CurrentUser for a valid JWT."""
     token = _make_token()
     db = AsyncMock()
+    revoked_result = MagicMock()
+    revoked_result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=revoked_result)
 
     user = await get_current_user(token=token, db=db)
 
@@ -170,10 +176,14 @@ async def test_get_current_user_missing_tenant():
         # no tenant_id
         "email": EMAIL,
         "role": "ADMIN",
+        "jti": str(uuid.uuid4()),
         "exp": expire,
     }
     token = jose_jwt.encode(payload, _secret_key(), algorithm=ALGORITHM)
     db = AsyncMock()
+    revoked_result = MagicMock()
+    revoked_result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=revoked_result)
 
     from fastapi import HTTPException
 
@@ -237,11 +247,11 @@ def test_extract_tenant_id_missing():
     assert "Token missing tenant context" in str(exc_info.value.detail)
 
 
-# ── Test 10: POST /token auto-registers new user (V1) ────────────────
+# ── Test 10: POST /token unknown email → generic 401 ─────────────────
 
 
-def test_login_auto_register():
-    """POST /token with unknown email auto-registers user and tenant."""
+def test_login_unknown_email_returns_generic_401():
+    """POST /token with an unknown email returns a generic 401."""
     from backend.app.api.endpoints.auth import router as auth_router
     from backend.app.core.database import get_db
 
@@ -250,29 +260,9 @@ def test_login_auto_register():
 
     db = AsyncMock()
 
-    # User lookup: not found
     user_result = MagicMock()
     user_result.scalar_one_or_none.return_value = None
     db.execute.return_value = user_result
-
-    # flush will assign IDs via side_effect
-    flush_call_count = 0
-
-    async def _flush_side_effect():
-        nonlocal flush_call_count
-        flush_call_count += 1
-        # After first flush (tenant), set tenant.id
-        # After second flush (user), set user.id
-        for call in db.add.call_args_list:
-            obj = call[0][0]
-            if hasattr(obj, "id") and obj.id is None:
-                obj.id = uuid.uuid4()
-            if hasattr(obj, "tenant_id") and obj.tenant_id is None:
-                # TenantSettings gets tenant_id from tenant
-                pass
-
-    db.flush = AsyncMock(side_effect=_flush_side_effect)
-    db.add = MagicMock()
 
     async def _override_db():
         yield db
@@ -280,22 +270,22 @@ def test_login_auto_register():
     app.dependency_overrides[get_db] = _override_db
 
     client = TestClient(app)
-    response = client.post(
-        "/api/v1/auth/token",
-        json={
-            "email": "new@test.com",
-            "password": "secret123",
-            "tenant_name": "Test Corp",
-        },
-    )
+    with patch("backend.app.api.endpoints.auth._write_audit_log"), patch(
+        "backend.app.api.endpoints.auth._check_rate_limit"
+    ):
+        response = client.post(
+            "/api/v1/auth/token",
+            json={
+                "email": "new@test.com",
+                "password": "secret123",
+                "tenant_name": "Test Corp",
+            },
+        )
 
-    assert response.status_code == 200
+    assert response.status_code == 401
     data = response.json()
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
-    assert data["user"]["email"] == "new@test.com"
-    assert data["user"]["role"] == "ADMIN"
-    assert data["user"]["tenant_name"] == "Test Corp"
+    assert data["detail"]["error"]["code"] == "UNAUTHORIZED"
+    assert data["detail"]["error"]["message"] == "Invalid email or password"
 
 
 # ── Test 11: POST /token existing user valid password → 200 ──────────
@@ -340,10 +330,13 @@ def test_login_existing_user_valid_password():
     app.dependency_overrides[get_db] = _override_db
 
     client = TestClient(app)
-    response = client.post(
-        "/api/v1/auth/token",
-        json={"email": EMAIL, "password": "correct-password"},
-    )
+    with patch("backend.app.api.endpoints.auth._write_audit_log"), patch(
+        "backend.app.api.endpoints.auth._check_rate_limit"
+    ):
+        response = client.post(
+            "/api/v1/auth/token",
+            json={"email": EMAIL, "password": "correct-password"},
+        )
 
     assert response.status_code == 200
     data = response.json()
@@ -383,10 +376,13 @@ def test_login_wrong_password():
     app.dependency_overrides[get_db] = _override_db
 
     client = TestClient(app)
-    response = client.post(
-        "/api/v1/auth/token",
-        json={"email": EMAIL, "password": "wrong-password"},
-    )
+    with patch("backend.app.api.endpoints.auth._write_audit_log"), patch(
+        "backend.app.api.endpoints.auth._check_rate_limit"
+    ):
+        response = client.post(
+            "/api/v1/auth/token",
+            json={"email": EMAIL, "password": "wrong-password"},
+        )
 
     assert response.status_code == 401
     data = response.json()
@@ -425,10 +421,11 @@ def test_login_deactivated_user():
     app.dependency_overrides[get_db] = _override_db
 
     client = TestClient(app)
-    response = client.post(
-        "/api/v1/auth/token",
-        json={"email": EMAIL, "password": "correct-password"},
-    )
+    with patch("backend.app.api.endpoints.auth._check_rate_limit"):
+        response = client.post(
+            "/api/v1/auth/token",
+            json={"email": EMAIL, "password": "correct-password"},
+        )
 
     assert response.status_code == 401
     data = response.json()

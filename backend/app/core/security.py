@@ -1,41 +1,35 @@
 """
-LeakSight V1 — Security Utilities (JWT Decoding & Tenant Extraction)
-
-Source: docs/API_CONTRACTS.md (Section 1 — Authentication), docs/CLAUDE.md
-       docs/ARCHITECTURE.md (auth dependency injection pattern)
-
-Phase 6: Real JWT implementation using python-jose. Replaces Phase 1 stubs.
+LeakSight V1 - Security Utilities (JWT decoding and user resolution).
 """
 
+from __future__ import annotations
+
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+from jose import JWTError, ExpiredSignatureError, jwt
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.config import get_settings
 from backend.app.core.database import get_db
 
-# OAuth2 scheme — token URL matches the auth endpoint path
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/api/v1/auth/token",
     auto_error=True,
 )
 
-# JWT algorithm — HS256 is sufficient for single-server V1
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 
 class CurrentUser(BaseModel):
-    """Authenticated user context extracted from JWT.
-
-    Every protected route receives this as a dependency.
-    """
+    """Authenticated user context extracted from JWT."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -45,6 +39,19 @@ class CurrentUser(BaseModel):
     role: str = "REVIEWER"
 
 
+def _unauthorized(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={
+            "error": {
+                "code": "UNAUTHORIZED",
+                "message": message,
+            }
+        },
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 def create_access_token(
     user_id: UUID,
     tenant_id: UUID,
@@ -52,18 +59,7 @@ def create_access_token(
     role: str = "REVIEWER",
     expires_delta: timedelta | None = None,
 ) -> str:
-    """Create a JWT access token.
-
-    Args:
-        user_id: UUID of the authenticated user.
-        tenant_id: UUID of the user's tenant.
-        email: User email address.
-        role: User role (ADMIN or REVIEWER).
-        expires_delta: Optional custom expiration. Defaults to 24 hours.
-
-    Returns:
-        Encoded JWT string.
-    """
+    """Create a signed JWT access token."""
     settings = get_settings()
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -73,133 +69,80 @@ def create_access_token(
         "tenant_id": str(tenant_id),
         "email": email,
         "role": role,
+        "jti": str(uuid.uuid4()),
         "exp": expire,
     }
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
 def decode_jwt(token: str) -> dict[str, Any]:
-    """Decode and validate a JWT token.
-
-    Args:
-        token: The raw JWT string from the Authorization header.
-
-    Returns:
-        Decoded JWT payload containing sub, tenant_id, email, role, exp.
-
-    Raises:
-        HTTPException: 401 if token is invalid, expired, or malformed.
-
-    Note:
-        Never logs the token value itself per logging rules.
-    """
+    """Decode and validate a JWT signature and expiry."""
     settings = get_settings()
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
-        return payload
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "error": {
-                    "code": "UNAUTHORIZED",
-                    "message": "Invalid or expired token",
-                }
-            },
-            headers={"WWW-Authenticate": "Bearer"},
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[ALGORITHM],
+            options={"require_exp": True},
         )
+    except ExpiredSignatureError as exc:
+        raise _unauthorized("Token expired") from exc
+    except JWTError as exc:
+        raise _unauthorized("Invalid or expired token") from exc
+
+    if "exp" not in payload:
+        raise _unauthorized("Invalid or expired token")
+
+    return payload
+
+
+async def get_token_payload(token: str, db: AsyncSession) -> dict[str, Any]:
+    """Decode a JWT and ensure its JTI has not been revoked."""
+    payload = decode_jwt(token)
+    jti = payload.get("jti")
+
+    if not isinstance(jti, str) or not jti:
+        raise _unauthorized("Token missing required fields")
+
+    revoked = await db.execute(
+        text("SELECT 1 FROM revoked_tokens WHERE jti = :jti"),
+        {"jti": jti},
+    )
+    if revoked.scalar_one_or_none() is not None:
+        raise _unauthorized("Token has been revoked")
+
+    return payload
 
 
 def extract_tenant_id(payload: dict[str, Any]) -> UUID:
-    """Extract tenant_id from a decoded JWT payload.
-
-    Args:
-        payload: Decoded JWT payload dictionary.
-
-    Returns:
-        The tenant_id as UUID type.
-
-    Raises:
-        HTTPException: 401 if tenant_id is missing from the payload.
-    """
+    """Extract tenant_id from a decoded JWT payload."""
     tenant_id: str | None = payload.get("tenant_id")
     if not tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "error": {
-                    "code": "UNAUTHORIZED",
-                    "message": "Token missing tenant context",
-                }
-            },
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise _unauthorized("Token missing tenant context")
     try:
         return UUID(tenant_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "error": {
-                    "code": "UNAUTHORIZED",
-                    "message": "Token missing tenant context",
-                }
-            },
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    except ValueError as exc:
+        raise _unauthorized("Token missing tenant context") from exc
 
 
-async def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> CurrentUser:
-    """FastAPI dependency that extracts and validates the current user.
-
-    Decodes the JWT, extracts user_id, tenant_id, and email,
-    and returns a CurrentUser instance. Used in every protected route.
-
-    Args:
-        token: Bearer token string from the Authorization header.
-        db: Async database session (available for future user validation).
-
-    Returns:
-        CurrentUser instance with user_id, tenant_id, email, role.
-
-    Raises:
-        HTTPException: 401 if token is invalid, expired, missing fields.
-    """
-    payload = decode_jwt(token)
+async def resolve_current_user(token: str, db: AsyncSession) -> CurrentUser:
+    """Validate the token and return a typed authenticated user."""
+    payload = await get_token_payload(token, db)
 
     user_id_str = payload.get("sub")
     tenant_id_str = payload.get("tenant_id")
     email = payload.get("email")
 
     if not user_id_str or not tenant_id_str or not email:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "error": {
-                    "code": "UNAUTHORIZED",
-                    "message": "Token missing required fields",
-                }
-            },
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise _unauthorized("Token missing required fields")
 
     try:
         user_id = UUID(user_id_str)
         tenant_id = UUID(tenant_id_str)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "error": {
-                    "code": "UNAUTHORIZED",
-                    "message": "Token contains invalid user or tenant identifiers",
-                }
-            },
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    except ValueError as exc:
+        raise _unauthorized(
+            "Token contains invalid user or tenant identifiers"
+        ) from exc
 
     return CurrentUser(
         user_id=user_id,
@@ -207,3 +150,11 @@ async def get_current_user(
         email=email,
         role=payload.get("role", "REVIEWER"),
     )
+
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> CurrentUser:
+    """FastAPI dependency for authenticated user resolution."""
+    return await resolve_current_user(token, db)

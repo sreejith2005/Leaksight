@@ -53,7 +53,7 @@ def export_structuring_excel(
                     row.get("item_description"),
                     row.get("unit_raw"),
                     float(row.get("unit_price")) if row.get("unit_price") is not None else None,
-                    row.get("currency") or "INR",
+                    row.get("currency") or "",
                     row.get("version_number") or 1,
                     row.get("source_page"),
                     round(float(row.get("confidence") or 0.0), 2),

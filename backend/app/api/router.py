@@ -9,7 +9,10 @@ All Phase 6 endpoint modules are wired here.
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request, status
+
+from backend.app.core.database import async_session_factory
+from backend.app.core.security import get_token_payload
 
 from backend.app.api.endpoints.admin import router as admin_endpoint_router
 from backend.app.api.endpoints.auth import router as auth_endpoint_router
@@ -29,7 +32,7 @@ health_router = APIRouter(tags=["health"])
 
 
 @health_router.get("/health")
-async def health_check() -> dict[str, Any]:
+async def health_check(request: Request) -> dict[str, Any]:
     """Application health check endpoint.
 
     Returns basic application status. Used by Docker health checks,
@@ -38,6 +41,23 @@ async def health_check() -> dict[str, Any]:
     Returns:
         JSON with status "ok" and service name.
     """
+    authorization = request.headers.get("Authorization", "").strip()
+    if authorization:
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "error": {
+                        "code": "UNAUTHORIZED",
+                        "message": "Invalid or expired token",
+                    }
+                },
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        async with async_session_factory() as db:
+            await get_token_payload(token, db)
+
     return {
         "status": "ok",
         "service": "leaksight-api",

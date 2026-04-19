@@ -16,6 +16,7 @@ Tests:
 
 import io
 import uuid
+import zipfile
 from decimal import Decimal
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -176,7 +177,10 @@ def test_upload_reupload_stale_invoice_requeues_parse():
     )
     client = TestClient(app)
 
-    file_content = b"invoice content"
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as archive:
+        archive.writestr("xl/workbook.xml", "<workbook />")
+    file_content = zip_buffer.getvalue()
 
     with patch("backend.app.api.endpoints.ingest.set_tenant_context", new_callable=AsyncMock):
         with patch("backend.app.api.endpoints.ingest.parse_document") as mock_parse_task:

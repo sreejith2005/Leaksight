@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
+from backend.app.core.config import get_settings
 from backend.app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -135,3 +136,36 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
         request.state.user_id = None
 
         return await call_next(request)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Apply baseline security headers to every response."""
+
+    def __init__(self, app: Any) -> None:
+        super().__init__(app)
+        self._app_env = get_settings().app_env
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        response = await call_next(request)
+        path = request.url.path
+        is_api_route = path.startswith("/api/")
+
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "0"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        if self._app_env == "production":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
+
+        if is_api_route:
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'none'; frame-ancestors 'none'"
+            )
+
+        return response

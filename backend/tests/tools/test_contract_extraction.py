@@ -2,9 +2,18 @@
 Unit tests for Tool A extraction pipeline.
 All tests are pure unit tests - no database, no file system beyond fixtures.
 """
+from dataclasses import dataclass
 import pytest
 import os
 import tempfile
+
+
+@dataclass
+class MockTable:
+    headers: list[str]
+    rows: list[list[str]]
+    source_page: int = 1
+    extraction_method: str = "MOCK_TABLE"
 
 
 class TestBaseExtractor:
@@ -18,7 +27,7 @@ class TestBaseExtractor:
             price_confidence=0.95,
             unit_confidence=1.0,
         )
-        assert item.currency == "INR"
+        assert item.currency is None
         assert item.version_number == 1
         assert item.needs_review is False
 
@@ -144,8 +153,115 @@ class TestTableNormalizer:
         assert roles['Version_Number'] != 'CONTRACT_ID'
 
 
+class TestNormalizerUniversal:
+    def test_multi_currency_columns_produce_separate_rows(self):
+        table = MockTable(
+            headers=['Item', 'Price (INR)', 'Price (USD)'],
+            rows=[
+                ['Service A', '10000', '120'],
+                ['Service B', '15000', '180'],
+            ]
+        )
+        from backend.app.tools.contract_structuring.extractors.table_normalizer import TableNormalizer
+
+        items = TableNormalizer().normalize([table], stitched=False)
+        assert len(items) == 4
+        inr = [item for item in items if item['currency'] == 'INR']
+        usd = [item for item in items if item['currency'] == 'USD']
+        assert len(inr) == 2
+        assert len(usd) == 2
+        assert all(item['unit_price'] is not None for item in items)
+
+    def test_header_currency_overrides_cell_ambiguity(self):
+        table = MockTable(
+            headers=['Item', 'Price (USD)'],
+            rows=[['Widget', '500'], ['Gadget', '750']]
+        )
+        from backend.app.tools.contract_structuring.extractors.table_normalizer import TableNormalizer
+
+        items = TableNormalizer().normalize([table], stitched=False)
+        assert all(item['currency'] == 'USD' for item in items)
+        assert all(item['unit_price'] is not None for item in items)
+
+    def test_no_currency_column_leaves_currency_null(self):
+        table = MockTable(
+            headers=['Item', 'Price'],
+            rows=[['Widget', '500']]
+        )
+        from backend.app.tools.contract_structuring.extractors.table_normalizer import TableNormalizer
+
+        items = TableNormalizer().normalize([table], stitched=False)
+        assert items[0]['currency'] is None
+        assert items[0]['unit_price'] == 500.0
+
+    def test_unusual_headers_still_extract(self):
+        table = MockTable(
+            headers=['Particulars', 'Rate', 'Qty', 'UOM'],
+            rows=[['Civil Work', '25000', '10', 'Sqft']]
+        )
+        from backend.app.tools.contract_structuring.extractors.table_normalizer import TableNormalizer
+
+        items = TableNormalizer().normalize([table], stitched=False)
+        assert len(items) == 1
+        assert items[0]['unit_price'] == 25000.0
+        assert items[0]['quantity'] == 10.0
+
+    def test_table_without_classifiable_columns_uses_positional(self):
+        table = MockTable(
+            headers=['Col1', 'Col2', 'Col3'],
+            rows=[['Alpha service', '5000', '2']]
+        )
+        from backend.app.tools.contract_structuring.extractors.table_normalizer import TableNormalizer
+
+        items = TableNormalizer().normalize([table], stitched=False)
+        assert len(items) == 1
+        assert items[0]['unit_price'] is not None
+
+    def test_multi_currency_conflict_only_for_single_ambiguous_column(self):
+        table = MockTable(
+            headers=['Item', 'Rate'],
+            rows=[
+                ['Service A', '₹10000'],
+                ['Service B', '$120'],
+            ]
+        )
+        from backend.app.tools.contract_structuring.extractors.table_normalizer import TableNormalizer
+
+        items = TableNormalizer().normalize([table], stitched=False)
+        conflicts = [item for item in items if 'MULTI_CURRENCY_CONFLICT' in str(item.get('failure_flags', []))]
+        assert len(conflicts) == 2
+        assert all(item['unit_price'] is None for item in conflicts)
+
+    def test_currency_from_cell_symbol(self):
+        from backend.app.tools.contract_structuring.extractors.table_normalizer import extract_currency_from_cell
+
+        cases = [
+            ('₹ 10,000', (10000.0, 'INR')),
+            ('$120', (120.0, 'USD')),
+            ('USD 500', (500.0, 'USD')),
+            ('Rs. 250', (250.0, 'INR')),
+            ('€ 89.50', (89.5, 'EUR')),
+            ('£ 200', (200.0, 'GBP')),
+            ('1500', (1500.0, None)),
+            ('', (None, None)),
+        ]
+        for cell, expected in cases:
+            assert extract_currency_from_cell(cell) == expected
+
+    def test_currency_from_header(self):
+        from backend.app.tools.contract_structuring.extractors.table_normalizer import extract_currency_from_header
+
+        assert extract_currency_from_header('Price (INR)') == 'INR'
+        assert extract_currency_from_header('Rate (USD)') == 'USD'
+        assert extract_currency_from_header('Amount in EUR') == 'EUR'
+        assert extract_currency_from_header('Value (₹)') == 'INR'
+        assert extract_currency_from_header('Cost (£)') == 'GBP'
+        assert extract_currency_from_header('Price') is None
+        assert extract_currency_from_header('Amount') is None
+
+
 class TestMultiPageStitcher:
-    def test_consecutive_same_columns_stitched(self):
+    def test_consecutive_same_columns_stitched_only_when_last_row_incomplete(self):
         from backend.app.tools.contract_structuring.extractors.base_extractor import RawTableResult
         from backend.app.tools.contract_structuring.extractors.multi_page_stitcher import stitch_tables
 
@@ -153,12 +269,11 @@ class TestMultiPageStitcher:
             source_page=1,
             extraction_method="CAMELOT_LATTICE",
             raw_table_json=[
-                {"Item": "Header1", "Unit": "Header2", "Price": "Header3"},
-                {"Item": "Steel Pipe", "Unit": "Nos", "Price": "850"},
+                {"Item": "Steel Pipe", "Unit": "", "Price": ""},
             ],
             table_confidence=0.9,
             column_count=3,
-            row_count=2,
+            row_count=1,
         )
         table2 = RawTableResult(
             source_page=2,
@@ -174,6 +289,34 @@ class TestMultiPageStitcher:
         result = stitch_tables([table1, table2])
         assert result[1].is_continuation is True
         assert result[1].continued_from_index == 0
+
+    def test_complete_rows_not_stitched_even_when_headers_match(self):
+        from backend.app.tools.contract_structuring.extractors.base_extractor import RawTableResult
+        from backend.app.tools.contract_structuring.extractors.multi_page_stitcher import stitch_tables
+
+        table1 = RawTableResult(
+            source_page=1,
+            extraction_method="CAMELOT_LATTICE",
+            raw_table_json=[
+                {"Item": "Steel Pipe", "Unit": "Nos", "Price": "850"},
+            ],
+            table_confidence=0.9,
+            column_count=3,
+            row_count=1,
+        )
+        table2 = RawTableResult(
+            source_page=2,
+            extraction_method="CAMELOT_LATTICE",
+            raw_table_json=[
+                {"Item": "Gate Valve", "Unit": "Nos", "Price": "3500"},
+            ],
+            table_confidence=0.9,
+            column_count=3,
+            row_count=1,
+        )
+
+        result = stitch_tables([table1, table2])
+        assert result[1].is_continuation is False
 
     def test_non_consecutive_pages_not_stitched(self):
         from backend.app.tools.contract_structuring.extractors.base_extractor import RawTableResult
@@ -332,9 +475,11 @@ class TestPdfExtractor:
         document_path.write_bytes(b'%PDF-1.4 test')
 
         monkeypatch.setattr(pdf_extractor, '_get_pdf_page_count', lambda _: 1)
+        monkeypatch.setattr(pdf_extractor, '_try_pdfplumber_default', lambda *args, **kwargs: [])
+        monkeypatch.setattr(pdf_extractor, '_try_pdfplumber_text', lambda *args, **kwargs: [])
+        monkeypatch.setattr(pdf_extractor, '_try_pdfplumber_explicit_lines', lambda *args, **kwargs: [])
         monkeypatch.setattr(pdf_extractor, '_try_camelot_lattice', lambda *args, **kwargs: [])
         monkeypatch.setattr(pdf_extractor, '_try_camelot_stream', lambda *args, **kwargs: [])
-        monkeypatch.setattr(pdf_extractor, '_try_pdfplumber', lambda *args, **kwargs: [])
         monkeypatch.setattr(
             pdf_extractor,
             '_process_page_with_timeout',
@@ -369,9 +514,11 @@ class TestPdfExtractor:
         ])
 
         monkeypatch.setattr(pdf_extractor, '_get_pdf_page_count', lambda _: 2)
+        monkeypatch.setattr(pdf_extractor, '_try_pdfplumber_default', lambda *args, **kwargs: [])
+        monkeypatch.setattr(pdf_extractor, '_try_pdfplumber_text', lambda *args, **kwargs: [])
+        monkeypatch.setattr(pdf_extractor, '_try_pdfplumber_explicit_lines', lambda *args, **kwargs: [])
         monkeypatch.setattr(pdf_extractor, '_try_camelot_lattice', lambda *args, **kwargs: [])
         monkeypatch.setattr(pdf_extractor, '_try_camelot_stream', lambda *args, **kwargs: [])
-        monkeypatch.setattr(pdf_extractor, '_try_pdfplumber', lambda *args, **kwargs: [])
         monkeypatch.setattr(
             pdf_extractor,
             '_process_page_with_timeout',

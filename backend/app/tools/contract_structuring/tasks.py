@@ -55,26 +55,9 @@ def _format_task_error(exc: Exception) -> str:
 
 
 def _extract_raw_tables(file_path: Path) -> list:
-    suffix = file_path.suffix.lower()
-    if suffix == ".pdf":
-        from backend.app.tools.contract_structuring.extractors.pdf_extractor import (
-            extract_tables_from_pdf,
-        )
-
-        return extract_tables_from_pdf(str(file_path))
-    if suffix == ".docx":
-        from backend.app.tools.contract_structuring.extractors.docx_extractor import (
-            extract_tables_from_docx,
-        )
-
-        return extract_tables_from_docx(str(file_path))
-    if suffix in {".xlsx", ".xls", ".csv"}:
-        from backend.app.tools.contract_structuring.extractors.excel_extractor import (
-            extract_tables_from_excel,
-        )
-
-        return extract_tables_from_excel(str(file_path))
-    raise ValueError(f"Unsupported document format for structuring: {suffix}")
+    extractor = _pick_extractor(file_path)
+    result = extractor.extract(str(file_path))
+    return list(getattr(result, "tables", []) or [])
 
 
 def _pick_raw_table_for_line_item(raw_rows: list[RawContractTable], source_page: int | None) -> UUID | None:
@@ -387,7 +370,7 @@ def _build_export_payload(line_items: list[ExtractedLineItem], clauses: list[Ext
                 "item_description": item.item_description,
                 "unit": item.unit_raw,
                 "unit_price": float(item.unit_price) if item.unit_price is not None else None,
-                "currency": item.currency or "INR",
+                "currency": item.currency or None,
                 "slab_info": item.slab_info,
                 "source_page": item.source_page,
                 "confidence": round(float(confidence), 2),
@@ -405,7 +388,7 @@ def _build_export_payload(line_items: list[ExtractedLineItem], clauses: list[Ext
                 "item_description": item.item_description,
                 "unit": item.unit_raw,
                 "unit_price": float(item.unit_price) if item.unit_price is not None else None,
-                "currency": item.currency or "INR",
+                "currency": item.currency or None,
                 "source_page": item.source_page,
                 "confidence": round(float(confidence), 2),
             }
@@ -699,6 +682,14 @@ async def _import_confirmed_items_to_leaksight(
         for item in doc_items:
             if item.item_description is None or item.unit_raw is None or item.unit_price is None:
                 continue
+            if not item.currency:
+                logger.warning(
+                    "tool_a_import_skipped_missing_currency",
+                    tenant_id=str(tenant_id),
+                    document_id=str(document_id),
+                    item_description=item.item_description,
+                )
+                continue
             row_key = _line_item_key(item.item_description, item.unit_raw)
             if row_key in existing_keys:
                 continue
@@ -711,7 +702,7 @@ async def _import_confirmed_items_to_leaksight(
                     raw_item_desc=item.item_description,
                     unit=item.unit_raw,
                     unit_price=item.unit_price,
-                    currency=item.currency or "INR",
+                    currency=item.currency,
                 )
             )
             existing_keys.add(row_key)

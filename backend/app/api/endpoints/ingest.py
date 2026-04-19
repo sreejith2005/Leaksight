@@ -13,9 +13,12 @@ Endpoints:
 """
 
 import hashlib
+import io
+import re
 import uuid
 from pathlib import Path
 from typing import Any
+import zipfile
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
@@ -56,6 +59,8 @@ EXTENSION_MIME_MAP: dict[str, str] = {
 
 # Valid doc_type values per DATABASE_SCHEMA.md
 VALID_DOC_TYPES: frozenset[str] = frozenset({"INVOICE", "CONTRACT", "PO", "GRN"})
+ZIP_SAFE_UNCOMPRESSED_LIMIT_BYTES = 500 * 1024 * 1024
+SAFE_FILENAME_PATTERN = re.compile(r"[^A-Za-z0-9._-]")
 
 
 class TriggerRunRequest(BaseModel):
@@ -63,6 +68,113 @@ class TriggerRunRequest(BaseModel):
 
     document_ids: list[uuid.UUID]
     run_label: str | None = None
+
+
+def _sanitize_filename(filename: str) -> str:
+    sanitized = filename.replace("/", "").replace("\\", "")
+    sanitized = sanitized.lstrip(".")
+    sanitized = SAFE_FILENAME_PATTERN.sub("_", sanitized)
+    sanitized = sanitized[:200]
+    return sanitized or "upload"
+
+
+def _is_text_like(file_bytes: bytes) -> bool:
+    if b"\x00" in file_bytes:
+        return False
+    sample = file_bytes[:4096]
+    try:
+        sample.decode("utf-8")
+        return True
+    except UnicodeDecodeError:
+        try:
+            sample.decode("latin-1")
+            return True
+        except UnicodeDecodeError:
+            return False
+
+
+def _validate_magic_bytes(file_ext: str, file_bytes: bytes) -> None:
+    header = file_bytes[:16]
+    security_message = (
+        "File content does not match the declared file type. "
+        "Upload rejected for security."
+    )
+
+    if file_ext == ".pdf" and not header.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+        )
+
+    if file_ext == ".xlsx" and not header.startswith(b"PK\x03\x04"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+        )
+
+    if file_ext == ".xls" and not header.startswith(b"\xd0\xcf\x11\xe0"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+        )
+
+    if file_ext == ".docx":
+        if not header.startswith(b"PK\x03\x04"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+            )
+        try:
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+                if not any(name.startswith("word/") for name in archive.namelist()):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+                    )
+        except zipfile.BadZipFile as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+            ) from exc
+
+    if file_ext == ".csv" and not _is_text_like(file_bytes):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+        )
+
+
+def _validate_zip_bomb(file_ext: str, file_bytes: bytes) -> None:
+    if file_ext not in {".xlsx", ".docx"}:
+        return
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+            total_uncompressed_size = sum(member.file_size for member in archive.infolist())
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "FILE_VALIDATION_ERROR",
+                    "message": (
+                        "File content does not match the declared file type. "
+                        "Upload rejected for security."
+                    ),
+                }
+            },
+        ) from exc
+
+    if total_uncompressed_size > ZIP_SAFE_UNCOMPRESSED_LIMIT_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "FILE_VALIDATION_ERROR",
+                    "message": "File rejected: compressed archive exceeds safe size limit.",
+                }
+            },
+        )
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
@@ -105,6 +217,7 @@ async def upload_document(
 
     # ── Validate file format ────────────────────────────────────────
     original_filename = file.filename or "unknown"
+    sanitized_filename = _sanitize_filename(original_filename)
     file_ext = Path(original_filename).suffix.lower()
     if file_ext not in SUPPORTED_EXTENSIONS:
         raise HTTPException(
@@ -146,6 +259,9 @@ async def upload_document(
                 }
             },
         )
+
+    _validate_magic_bytes(file_ext, file_bytes)
+    _validate_zip_bomb(file_ext, file_bytes)
 
     # ── Compute SHA-256 hash ────────────────────────────────────────
     sha256_hash = hashlib.sha256(file_bytes).hexdigest()
@@ -251,7 +367,7 @@ async def upload_document(
     storage_path = Path(settings.document_storage_path)
     file_dir = storage_path / str(tenant_id) / str(document_id)
     file_dir.mkdir(parents=True, exist_ok=True)
-    file_full_path = file_dir / original_filename
+    file_full_path = file_dir / sanitized_filename
 
     file_full_path.write_bytes(file_bytes)
 
@@ -259,14 +375,14 @@ async def upload_document(
     mime_type = EXTENSION_MIME_MAP.get(file_ext, "application/octet-stream")
 
     # ── Relative file path for database storage ─────────────────────
-    relative_path = f"{tenant_id}/{document_id}/{original_filename}"
+    relative_path = f"{tenant_id}/{document_id}/{sanitized_filename}"
 
     # ── Create documents row ────────────────────────────────────────
     doc = Document(
         id=document_id,
         tenant_id=tenant_id,
         file_path=relative_path,
-        original_filename=original_filename,
+        original_filename=sanitized_filename,
         sha256_hash=sha256_hash,
         doc_type=doc_type,
         file_size=file_size,
@@ -306,7 +422,7 @@ async def upload_document(
 
     return {
         "document_id": str(document_id),
-        "filename": original_filename,
+        "filename": sanitized_filename,
         "doc_type": doc_type,
         "sha256_hash": sha256_hash,
         "file_size": file_size,

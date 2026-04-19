@@ -22,6 +22,7 @@ from backend.app.core.config import get_settings, validate_production_settings
 from backend.app.core.logging import get_logger, setup_logging
 from backend.app.core.middleware import (
     RequestLoggingMiddleware,
+    SecurityHeadersMiddleware,
     TenantContextMiddleware,
 )
 from backend.app.tools.contract_structuring.router import router as structuring_router
@@ -81,9 +82,11 @@ def create_app() -> FastAPI:
     # --- Middleware ---
     # Mount order matters: outermost middleware is added LAST with Starlette.
     # Starlette processes middleware in reverse-add order, so:
-    #   add(TenantContext) first → runs second (inner)
-    #   add(RequestLogging) second → runs first (outer)
+    #   add(TenantContext) first    → runs third (inner)
+    #   add(SecurityHeaders) second → runs second
+    #   add(RequestLogging) third   → runs first (outer)
     app.add_middleware(TenantContextMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
 
     # --- Routes ---
