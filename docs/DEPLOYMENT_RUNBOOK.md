@@ -336,7 +336,7 @@ For deployments that include Tool A, apply the following operational settings:
 - Celery worker queue list must include `structuring`.
 
 ```bash
-.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring
+.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring,revalidation
 ```
 
 - On first deploy, download spaCy model:

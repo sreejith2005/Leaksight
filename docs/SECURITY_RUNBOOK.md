@@ -36,7 +36,7 @@ docker compose -f docker-compose.prod.yml restart backend
 ```bash
 curl -X POST https://YOUR_DOMAIN/api/v1/auth/token \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@test.com","password":"PZAD-QyiIWCBct2iRxvEkQ"}'
+  -d '{"email":"admin@test.com","password":"<current-admin-password>"}'
 ```
 
 ## 2. Database Password Rotation Procedure

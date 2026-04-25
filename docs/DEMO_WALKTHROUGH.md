@@ -10,7 +10,7 @@
 **Credentials**:
 - URL: `http://localhost:5173`
 - Email: `admin@test.com`
-- Password: `PZAD-QyiIWCBct2iRxvEkQ`
+- Password: use the temporary password printed by `.\.venv\Scripts\python.exe -m backend.app.scripts.create_tenant --name "Local Dev" --email "admin@test.com"` after local database setup.
 
 ---
 
@@ -214,9 +214,9 @@ After completing the walkthrough, verify:
 |---------|-------|-----|
 | Login fails | Backend not running | Start backend: `.venv\Scripts\python.exe -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000` |
 | Dashboard empty | No analysis run in DB | Run `_upload_demo_data.py` to upload demo data and trigger analysis |
-| Only 0 findings | Worker not running | Start worker: `.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring` |
+| Only 0 findings | Worker not running | Start worker: `.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring,revalidation` |
 | PDF download fails | WeasyPrint not installed | `pip install weasyprint` — requires system Cairo/Pango libraries |
-| Page loads blank | Frontend not running | Start frontend: `cd frontend && npm run dev` |
+| Page loads blank | Frontend not running | Start frontend: `cd frontend && npm.cmd run dev` |
 
 ---
 

@@ -25,14 +25,14 @@ After review, confirmed line items can be exported in multiple formats, includin
 
 ```powershell
 .venv\Scripts\Activate.ps1
-.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring
+.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring,revalidation
 ```
 
 4. Start frontend:
 
 ```powershell
 cd frontend
-npm run dev
+npm.cmd run dev
 ```
 
 5. Open http://localhost:5173 and navigate to Contract Structuring from the sidebar.

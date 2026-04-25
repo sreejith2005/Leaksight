@@ -34,7 +34,7 @@ router = APIRouter()
 # ── GET / — List notifications ────────────────────────────────────────
 
 
-@router.get("/")
+@router.get("")
 async def list_notifications(
     unread_only: bool = Query(False, description="Return only unread notifications"),
     skip: int = Query(0, ge=0, description="Pagination offset"),

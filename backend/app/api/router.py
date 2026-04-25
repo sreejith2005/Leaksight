@@ -87,9 +87,6 @@ reports_router.include_router(reports_endpoint_router)
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 admin_router.include_router(admin_endpoint_router)
 
-notifications_router = APIRouter(prefix="/notifications", tags=["notifications"])
-notifications_router.include_router(notifications_endpoint_router)
-
 integrity_api_router = APIRouter(prefix="/integrity", tags=["integrity"])
 integrity_api_router.include_router(integrity_router)
 
@@ -102,5 +99,9 @@ api_v1_router.include_router(vendors_router)
 api_v1_router.include_router(contracts_router)
 api_v1_router.include_router(reports_router)
 api_v1_router.include_router(admin_router)
-api_v1_router.include_router(notifications_router)
+api_v1_router.include_router(
+    notifications_endpoint_router,
+    prefix="/notifications",
+    tags=["notifications"],
+)
 api_v1_router.include_router(integrity_api_router)

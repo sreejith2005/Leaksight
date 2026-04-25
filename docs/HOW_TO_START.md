@@ -1,101 +1,151 @@
 # How to Start LeakSight Locally
 
-## Quick Start
-
-Open **two separate terminals** in the project folder:  
-`D:\c\Downloads\Leaksight v1 -1`
-
-### Terminal 1 — Backend (port 8000)
+Current local project folder:
 
 ```powershell
-.venvScriptsActivate.ps1.venvScriptspython.exe -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
+C:\Users\user\Leaksight_recovered_git
 ```
 
-or
+## One-Time Setup
 
-```
-python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### Terminal 2 — Celery Worker
+Run these from the project root after a fresh clone or laptop rebuild.
 
 ```powershell
-.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q 'default,parse,analysis,structuring'
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m spacy download en_core_web_sm
+
+cd frontend
+npm.cmd ci
+cd ..
 ```
 
-or
+VS Code is configured locally in `.vscode/settings.json` to use `.venv\Scripts\python.exe` and auto-activate the venv in new terminals.
 
+## Docker Desktop Requirement
+
+Local Postgres and Redis run through Docker Desktop.
+
+If Docker Desktop reports that WSL2 or Virtual Machine Platform is not enabled, run this once from a Windows terminal:
+
+```powershell
+wsl --install --no-distribution
 ```
-python -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring
+
+Then reboot Windows. After reboot, open Docker Desktop and wait until it says the engine is running.
+
+Verify Docker:
+
+```powershell
+docker ps
 ```
 
-`structuring` is the Tool A queue. It processes contract structuring runs, review export jobs, and LeakSight import writes.
+Start local database services:
 
-### Terminal 3 — Frontend (port 5173)
+```powershell
+docker compose -f docker-compose.dev.yml up -d
+```
+
+Expected local services:
+
+- PostgreSQL: `localhost:5434`, database `leaksight_dev`, user `leaksight_user`
+- Redis: `localhost:6379`
+
+The local development `.env` uses the Docker dev password from `docker-compose.dev.yml`. Do not commit `.env`.
+
+## Database Setup
+
+After Docker services are running:
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe -m alembic upgrade head
+cd ..
+$env:PYTHONIOENCODING="utf-8"
+.\.venv\Scripts\python.exe -m backend.app.scripts.seed
+```
+
+If relative paths are awkward in PowerShell, use explicit paths:
+
+```powershell
+cd backend
+& "C:\Users\user\Leaksight_recovered_git\.venv\Scripts\python.exe" -m alembic upgrade head
+cd ..
+$env:PYTHONIOENCODING="utf-8"
+& "C:\Users\user\Leaksight_recovered_git\.venv\Scripts\python.exe" -m backend.app.scripts.seed
+```
+
+Create a local admin user when needed:
+
+```powershell
+.\.venv\Scripts\python.exe -m backend.app.scripts.create_tenant --name "Local Dev" --email "admin@test.com"
+```
+
+The script prints a temporary password. Store it locally and do not commit it.
+
+## Start the App
+
+Open three terminals in the project root.
+
+### Terminal 1: Backend API
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Terminal 2: Celery Worker
+
+```powershell
+.\.venv\Scripts\python.exe -m celery -A backend.app.core.celery_app worker --loglevel=info --pool=solo -Q default,parse,analysis,structuring,revalidation
+```
+
+`--pool=solo` is required on Windows. The queue list must include `revalidation` for Tool C jobs.
+
+### Terminal 3: Frontend
 
 ```powershell
 cd frontend
 npm.cmd run dev
 ```
 
-### Verify
+## Verify
 
--   Backend: open [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) → should show `{"status":"ok"}`
--   Frontend: open [http://localhost:5173](http://localhost:5173)
+```powershell
+curl.exe http://localhost:8000/api/v1/health
+```
 
-### Stop
+Expected backend response:
 
-Press `Ctrl+C` in the respective terminal.
+```json
+{"status":"ok","service":"leaksight-api","version":"1.0.0"}
+```
 
----
+Frontend:
 
-## How Long Do They Stay Running?
+```text
+http://localhost:5173
+```
 
-**Both servers run indefinitely** — they do NOT auto-shutdown or timeout. They will keep running as long as:
+## Stop
 
-1.  The terminal window stays open (don't close the terminal)
-2.  Your computer stays on (not sleeping/hibernating)
-3.  You don't press Ctrl+C in that terminal
-4.  Nothing crashes (rare — if it does, just restart)
+Press `Ctrl+C` in the backend, worker, and frontend terminals.
 
-### When you WILL need to restart:
+Stop Docker services when you are done:
 
-Situation
+```powershell
+docker compose -f docker-compose.dev.yml down
+```
 
-Restart needed?
+## Current Restore Notes
 
-Computer restarted / woke from sleep
+As of 2026-04-25 on this machine:
 
-**Yes — both**
-
-Terminal window was closed
-
-**Yes — whichever was closed**
-
-You pressed Ctrl+C
-
-**Yes — whichever you stopped**
-
-Edited a backend `.py` file
-
-**No** — `--reload` flag auto-restarts it
-
-Edited a frontend `.tsx`/`.css` file
-
-**No** — Vite HMR auto-updates the browser
-
-Installed a new Python package
-
-**Yes — backend only**
-
-Ran `npm install` in frontend
-
-**Yes — frontend only**
-
-Just left it running overnight
-
-**No** — it stays up
-
-### TL;DR
-
-You only need to restart when your computer sleeps/restarts or you close the terminal. During a normal work session, start both once and they stay up all day.
+- Python 3.12.10 was installed with `winget`.
+- `.venv` was created and backend imports were verified.
+- `en_core_web_sm` 3.8.0 was installed.
+- Frontend dependencies were installed with `npm.cmd ci`.
+- `npm.cmd exec -- tsc --noEmit` passed.
+- `npm.cmd run build` passed.
+- Backend `/api/v1/health` passed without Docker.
+- Docker Desktop is installed, but WSL2/Virtual Machine Platform requires a Windows reboot before Postgres/Redis containers can start.

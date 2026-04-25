@@ -77,8 +77,9 @@ async function request<T>(
         : undefined,
   });
 
-  // Handle 401 globally — session expired
-  if (response.status === 401) {
+  // Handle protected-route 401 globally. Login 401s should fall through so the
+  // form can show the backend's "invalid credentials" message.
+  if (response.status === 401 && path !== '/auth/token') {
     clearToken();
     window.location.href = '/login';
     throw new APIError(401, 'UNAUTHORIZED', 'Session expired');

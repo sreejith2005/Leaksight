@@ -326,7 +326,7 @@ Open a **third terminal**:
 ```bash
 cd ~/leaksight/frontend
 npm install
-npm run dev
+npm.cmd run dev
 ```
 
 The frontend will be available at `http://localhost:5173` (Vite default) or `http://localhost:3000`.
@@ -336,7 +336,7 @@ The frontend will be available at `http://localhost:5173` (Vite default) or `htt
 ```
 Terminal 1: uvicorn (FastAPI backend)     → http://localhost:8000
 Terminal 2: celery worker                 → processes background tasks
-Terminal 3: npm run dev (React frontend)  → http://localhost:5173
+Terminal 3: npm.cmd run dev (React frontend)  → http://localhost:5173
 Docker:     postgres + redis              → running in background
 ```
 
@@ -578,7 +578,7 @@ Do NOT buy a server until:
 | Redis | Docker on laptop, port 6379 | Docker on server, internal network only |
 | FastAPI | `uvicorn --reload` | `uvicorn --workers 2` behind Nginx |
 | Celery | Single worker, local | Worker container, no outbound internet |
-| Frontend | `npm run dev` (Vite) | Built static files served by Nginx |
+| Frontend | `npm.cmd run dev` (Vite on Windows) | Built static files served by Nginx |
 | HTTPS | Not needed | Let's Encrypt via Nginx |
 | Domain | localhost | yourdomain.com |
 | Storage | Local folder | Encrypted Hetzner volume |
