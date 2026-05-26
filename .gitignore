@@ -68,3 +68,4 @@ alembic/versions/__pycache__/
 # Temporary files
 *.tmp
 *.bak
+_fresh_token.txt
