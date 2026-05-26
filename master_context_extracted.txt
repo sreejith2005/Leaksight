@@ -1,0 +1,129 @@
+﻿MASTER PROJECT CONTEXT FILE
+
+LeakSight ΓÇô Enterprise Commercial Intelligence Suite
+Master Context
+LeakSight is an enterprise financial control software suite designed to detect commercial and financial risk in vendor transactions.
+The system is not:
+an ERP
+a payment processor
+a procurement workflow
+a predictive analytics tool
+The system is:
+a post-facto verification engine
+a financial control layer
+an audit-grade evidence generator 
+LeakSight v1 - PRD
+
+Core Philosophy
+The product is built around three truths:
+Commercial Truth ΓÇô What was contractually agreed
+Operational Truth ΓÇô What was ordered/received
+Financial Truth ΓÇô What was invoiced and paid
+Leakage exists when Financial Truth exceeds Commercial or Operational Truth 
+LeakSight v1 - PRD
+.
+The system must always:
+Be deterministic
+Be explainable
+Produce audit-grade proof
+Never guess missing financial values
+Never make pricing assumptions
+
+PRODUCT STRUCTURE (V1.1)
+LeakSight V1.1 is structured as a modular suite 
+LeakSight v1.1 - PRD
+:
+Core Module ΓÇô Vendor Price Leakage Detection Engine
+Tool A ΓÇô Contract Structuring & ERP Mapping Engine
+Tool B ΓÇô Document Integrity & Tamper Detection Engine
+Each module:
+Can operate independently
+Can be sold independently
+Can integrate optionally 
+LeakSight v1.1 - PRD
+Priority order must not be reversed:
+Leakage
+Contract Structuring
+Tamper Detection 
+LeakSight v1.1 - PRD
+
+MODULE 1 ΓÇô LEAKAGE ENGINE (CORE REVENUE WEDGE)
+Objective
+Detect recoverable financial leakage.
+Supported Leakage Types
+Invoice vs Contract price mismatch
+Duplicate invoices
+Quantity mismatch (Invoice vs PO/GRN) 
+LeakSight v1.1 - PRD
+Workflow
+Upload ΓåÆ Parse ΓåÆ Normalize ΓåÆ Match ΓåÆ Apply Rules ΓåÆ Generate Leakage Records ΓåÆ Review ΓåÆ Export 
+LeakSight v1.1 - PRD
+Mandatory Properties
+Deterministic rules
+Confidence scoring
+Immutable leakage object once accepted
+Human-readable explanation required 
+LeakSight v1 - PRD
+
+TOOL A ΓÇô CONTRACT STRUCTURING
+Objective
+Convert unstructured contract documents into structured commercial data for ERP import 
+LeakSight v1.1 - PRD
+Scope:
+Extract pricing tables
+Extract key commercial clauses (effective date, expiry, amendments)
+Handle multi-page contracts
+Export structured Excel
+Generate ERP-ready JSON/CSV
+Must NOT:
+Guess pricing
+Fill missing values
+Infer commercial terms without evidence 
+LeakSight v1.1 - PRD
+
+TOOL B ΓÇô DOCUMENT INTEGRITY
+Objective
+Detect potential tampering or integrity risks in enterprise documents 
+LeakSight v1.1 - PRD
+Capabilities:
+SHA-256 hashing
+Metadata extraction
+Version comparison
+Numeric change detection
+Structural anomaly detection
+Risk scoring (0ΓÇô100)
+This is risk flagging, not forensic certification.
+
+SECURITY REQUIREMENTS
+All modules must support:
+Tenant isolation
+Encryption at rest
+Encryption in transit
+Role-based access control
+Audit logs
+Data deletion workflows 
+LeakSight v1.1 - PRD
+No external AI APIs for document processing.
+All parsing and processing must run locally.
+
+ARCHITECTURE PRINCIPLES
+Monolithic backend for V1.1
+Shared ingestion layer
+Shared document storage layer
+Shared hashing & metadata extraction layer
+Modular business logic per engine
+Layered database design (Raw ΓåÆ Canonical ΓåÆ Derived)
+
+SUCCESS METRICS
+Engineering success means:
+Leakage detected correctly
+Evidence trusted
+Stable under messy data
+Fast batch processing
+No silent failures 
+LeakSight v1 - PRD
+Not:
+Beautiful UI
+Abstract patterns
+Premature automation
+

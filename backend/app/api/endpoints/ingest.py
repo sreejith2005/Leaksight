@@ -1,0 +1,757 @@
+"""
+LeakSight V1 — File Ingestion Endpoints
+
+Source: docs/API_CONTRACTS.md (Section 3 — File Ingestion Endpoints),
+       docs/PARSING_SPEC.md (Section 3 — Supported Formats),
+       docs/DATABASE_SCHEMA.md (Sections 2.1, 4.3 — documents, document_hashes)
+
+Endpoints:
+  POST /api/v1/ingest/upload       — Upload a single document
+  POST /api/v1/ingest/trigger-run  — Trigger an analysis run
+  GET  /api/v1/ingest/runs         — List all analysis runs for a tenant
+  GET  /api/v1/ingest/runs/{run_id}/status — Get run status
+"""
+
+import hashlib
+import io
+import re
+import uuid
+from pathlib import Path
+from typing import Any
+import zipfile
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.app.core.config import get_settings
+from backend.app.core.database import get_db
+from backend.app.core.logging import get_logger
+from backend.app.core.security import CurrentUser, get_current_user
+from backend.app.core.tenant_context import set_tenant_context
+from backend.app.models.derived import AnalysisRun, DocumentHash
+from backend.app.models.contracts import Contract
+from backend.app.models.invoices import Invoice
+from backend.app.models.purchase_orders import PurchaseOrder
+from backend.app.models.raw import Document
+from backend.app.services import analysis_run_service
+from backend.app.tasks.parse_task import parse_document
+from backend.app.tasks.analysis_run_task import run_analysis
+
+logger = get_logger(__name__)
+
+router = APIRouter()
+
+# Supported file extensions per PARSING_SPEC.md Section 3
+SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({
+    ".pdf", ".xlsx", ".xls", ".csv", ".docx",
+})
+
+# MIME type mapping for supported formats
+EXTENSION_MIME_MAP: dict[str, str] = {
+    ".pdf": "application/pdf",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
+    ".csv": "text/csv",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+# Valid doc_type values per DATABASE_SCHEMA.md
+VALID_DOC_TYPES: frozenset[str] = frozenset({"INVOICE", "CONTRACT", "PO", "GRN"})
+ZIP_SAFE_UNCOMPRESSED_LIMIT_BYTES = 500 * 1024 * 1024
+SAFE_FILENAME_PATTERN = re.compile(r"[^A-Za-z0-9._-]")
+
+
+class TriggerRunRequest(BaseModel):
+    """Request schema for POST /api/v1/ingest/trigger-run."""
+
+    document_ids: list[uuid.UUID]
+    run_label: str | None = None
+
+
+def _sanitize_filename(filename: str) -> str:
+    sanitized = filename.replace("/", "").replace("\\", "")
+    sanitized = sanitized.lstrip(".")
+    sanitized = SAFE_FILENAME_PATTERN.sub("_", sanitized)
+    sanitized = sanitized[:200]
+    return sanitized or "upload"
+
+
+def _is_text_like(file_bytes: bytes) -> bool:
+    if b"\x00" in file_bytes:
+        return False
+    sample = file_bytes[:4096]
+    try:
+        sample.decode("utf-8")
+        return True
+    except UnicodeDecodeError:
+        try:
+            sample.decode("latin-1")
+            return True
+        except UnicodeDecodeError:
+            return False
+
+
+def _validate_magic_bytes(file_ext: str, file_bytes: bytes) -> None:
+    header = file_bytes[:16]
+    security_message = (
+        "File content does not match the declared file type. "
+        "Upload rejected for security."
+    )
+
+    if file_ext == ".pdf" and not header.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+        )
+
+    if file_ext == ".xlsx" and not header.startswith(b"PK\x03\x04"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+        )
+
+    if file_ext == ".xls" and not header.startswith(b"\xd0\xcf\x11\xe0"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+        )
+
+    if file_ext == ".docx":
+        if not header.startswith(b"PK\x03\x04"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+            )
+        try:
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+                if not any(name.startswith("word/") for name in archive.namelist()):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+                    )
+        except zipfile.BadZipFile as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+            ) from exc
+
+    if file_ext == ".csv" and not _is_text_like(file_bytes):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": {"code": "FILE_VALIDATION_ERROR", "message": security_message}},
+        )
+
+
+def _validate_zip_bomb(file_ext: str, file_bytes: bytes) -> None:
+    if file_ext not in {".xlsx", ".docx"}:
+        return
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+            total_uncompressed_size = sum(member.file_size for member in archive.infolist())
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "FILE_VALIDATION_ERROR",
+                    "message": (
+                        "File content does not match the declared file type. "
+                        "Upload rejected for security."
+                    ),
+                }
+            },
+        ) from exc
+
+    if total_uncompressed_size > ZIP_SAFE_UNCOMPRESSED_LIMIT_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "FILE_VALIDATION_ERROR",
+                    "message": "File rejected: compressed archive exceeds safe size limit.",
+                }
+            },
+        )
+
+
+@router.post("/upload", status_code=status.HTTP_201_CREATED)
+async def upload_document(
+    file: UploadFile = File(...),
+    doc_type: str = Form(...),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Upload a document for processing.
+
+    Validates file size and format, computes SHA-256 hash, stores file
+    to disk, creates documents row and document_hashes BASELINE record.
+
+    Args:
+        file: Uploaded file (multipart/form-data).
+        doc_type: Document type — INVOICE, CONTRACT, PO, or GRN.
+        current_user: Decoded JWT payload from auth dependency.
+        db: Async database session.
+
+    Returns:
+        Document metadata including document_id.
+    """
+    settings = get_settings()
+    tenant_id = current_user.tenant_id
+    await set_tenant_context(db, tenant_id)
+
+    # ── Validate doc_type ───────────────────────────────────────────
+    if doc_type not in VALID_DOC_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": f"Invalid doc_type '{doc_type}'. "
+                    f"Must be one of: {', '.join(sorted(VALID_DOC_TYPES))}",
+                }
+            },
+        )
+
+    # ── Validate file format ────────────────────────────────────────
+    original_filename = file.filename or "unknown"
+    sanitized_filename = _sanitize_filename(original_filename)
+    file_ext = Path(original_filename).suffix.lower()
+    if file_ext not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "UNSUPPORTED_FORMAT",
+                    "message": (
+                        f"File format '{file_ext}' is not supported. "
+                        f"Accepted formats: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
+                    ),
+                }
+            },
+        )
+
+    # ── Read file and validate size ─────────────────────────────────
+    file_bytes = await file.read()
+    file_size = len(file_bytes)
+    max_size_bytes = settings.max_upload_size_mb * 1024 * 1024
+
+    if file_size > max_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "FILE_TOO_LARGE",
+                    "message": (
+                        f"File size ({file_size} bytes) exceeds "
+                        f"{settings.max_upload_size_mb}MB limit"
+                    ),
+                    "details": [
+                        {
+                            "field": "file_size",
+                            "message": (
+                                f"File size exceeds {settings.max_upload_size_mb}MB limit"
+                            ),
+                        }
+                    ],
+                }
+            },
+        )
+
+    _validate_magic_bytes(file_ext, file_bytes)
+    _validate_zip_bomb(file_ext, file_bytes)
+
+    # ── Compute SHA-256 hash ────────────────────────────────────────
+    sha256_hash = hashlib.sha256(file_bytes).hexdigest()
+
+    # ── Check for re-upload (same hash for same tenant) ─────────────
+    existing_doc_stmt = select(Document).where(
+        Document.tenant_id == tenant_id,
+        Document.sha256_hash == sha256_hash,
+    )
+    result = await db.execute(existing_doc_stmt)
+    existing_doc = result.scalar_one_or_none()
+
+    if existing_doc is not None:
+        # Re-upload of same file (unchanged) — return existing document
+        # Create REUPLOAD hash record per PARSING_SPEC.md Section 7.3
+        # Find the current max upload_sequence for this document
+        max_seq_stmt = select(func.max(DocumentHash.upload_sequence)).where(
+            DocumentHash.document_id == existing_doc.id,
+        )
+        max_seq_result = await db.execute(max_seq_stmt)
+        max_seq = max_seq_result.scalar() or 0
+
+        reupload_hash = DocumentHash(
+            document_id=existing_doc.id,
+            tenant_id=tenant_id,
+            hash_sha256=sha256_hash,
+            hash_type="REUPLOAD",
+            upload_sequence=max_seq + 1,
+            comparison_status="UNCHANGED",
+        )
+        db.add(reupload_hash)
+        await db.flush()
+
+        # If this document previously parsed but lacks normalized records,
+        # force a re-parse + normalize backfill to avoid zero-input runs.
+        needs_reprocess = False
+        if existing_doc.parse_status == "FAILED":
+            needs_reprocess = True
+        elif existing_doc.parse_status == "PARSED":
+            if existing_doc.doc_type == "INVOICE":
+                canonical_stmt = select(func.count()).select_from(Invoice).where(
+                    Invoice.tenant_id == tenant_id,
+                    Invoice.source_document_id == existing_doc.id,
+                )
+                canonical_count = (await db.execute(canonical_stmt)).scalar() or 0
+                needs_reprocess = canonical_count == 0
+            elif existing_doc.doc_type == "CONTRACT":
+                canonical_stmt = select(func.count()).select_from(Contract).where(
+                    Contract.tenant_id == tenant_id,
+                    Contract.source_document_id == existing_doc.id,
+                )
+                canonical_count = (await db.execute(canonical_stmt)).scalar() or 0
+                needs_reprocess = canonical_count == 0
+            elif existing_doc.doc_type == "PO":
+                canonical_stmt = select(func.count()).select_from(PurchaseOrder).where(
+                    PurchaseOrder.tenant_id == tenant_id,
+                    PurchaseOrder.source_document_id == existing_doc.id,
+                )
+                canonical_count = (await db.execute(canonical_stmt)).scalar() or 0
+                needs_reprocess = canonical_count == 0
+
+        if needs_reprocess:
+            existing_doc.parse_status = "PENDING"
+            await db.flush()
+            parse_document.delay(str(existing_doc.id), str(tenant_id))
+            logger.info(
+                "document_reupload_reprocess_queued",
+                document_id=str(existing_doc.id),
+                tenant_id=str(tenant_id),
+                doc_type=existing_doc.doc_type,
+            )
+            return {
+                "document_id": str(existing_doc.id),
+                "filename": existing_doc.original_filename,
+                "doc_type": existing_doc.doc_type,
+                "sha256_hash": existing_doc.sha256_hash,
+                "file_size": existing_doc.file_size,
+                "parse_status": "PENDING",
+                "created_at": str(existing_doc.created_at),
+                "note": "Document re-uploaded. Reprocessing queued to rebuild canonical records.",
+            }
+
+        logger.info(
+            "document_reupload_unchanged",
+            document_id=str(existing_doc.id),
+            tenant_id=str(tenant_id),
+            doc_type=doc_type,
+        )
+
+        return {
+            "document_id": str(existing_doc.id),
+            "filename": existing_doc.original_filename,
+            "doc_type": existing_doc.doc_type,
+            "sha256_hash": existing_doc.sha256_hash,
+            "file_size": existing_doc.file_size,
+            "parse_status": existing_doc.parse_status,
+            "created_at": str(existing_doc.created_at),
+            "note": "Document already uploaded (identical hash). Returning existing record.",
+        }
+
+    # ── Generate document_id and write file to storage ──────────────
+    document_id = uuid.uuid4()
+    storage_path = Path(settings.document_storage_path)
+    file_dir = storage_path / str(tenant_id) / str(document_id)
+    file_dir.mkdir(parents=True, exist_ok=True)
+    file_full_path = file_dir / sanitized_filename
+
+    file_full_path.write_bytes(file_bytes)
+
+    # ── Determine MIME type ─────────────────────────────────────────
+    mime_type = EXTENSION_MIME_MAP.get(file_ext, "application/octet-stream")
+
+    # ── Relative file path for database storage ─────────────────────
+    relative_path = f"{tenant_id}/{document_id}/{sanitized_filename}"
+
+    # ── Create documents row ────────────────────────────────────────
+    doc = Document(
+        id=document_id,
+        tenant_id=tenant_id,
+        file_path=relative_path,
+        original_filename=sanitized_filename,
+        sha256_hash=sha256_hash,
+        doc_type=doc_type,
+        file_size=file_size,
+        mime_type=mime_type,
+    )
+    db.add(doc)
+    await db.flush()
+
+    # ── Create document_hashes BASELINE record ──────────────────────
+    baseline_hash = DocumentHash(
+        document_id=document_id,
+        tenant_id=tenant_id,
+        hash_sha256=sha256_hash,
+        hash_type="BASELINE",
+        upload_sequence=1,
+        comparison_status="NEW",
+    )
+    db.add(baseline_hash)
+    await db.flush()
+
+    # ── Log upload (only permitted fields) ──────────────────────────
+    logger.info(
+        "document_uploaded",
+        document_id=str(document_id),
+        tenant_id=str(tenant_id),
+        doc_type=doc_type,
+        count=file_size,
+    )
+
+    # ── Queue parse task (Phase 5) ──────────────────────────────────
+    parse_document.delay(str(document_id), str(tenant_id))
+    logger.info(
+        "parse_task_queued",
+        document_id=str(document_id),
+        tenant_id=str(tenant_id),
+    )
+
+    return {
+        "document_id": str(document_id),
+        "filename": sanitized_filename,
+        "doc_type": doc_type,
+        "sha256_hash": sha256_hash,
+        "file_size": file_size,
+        "parse_status": "PENDING",
+        "created_at": str(doc.created_at) if doc.created_at else None,
+    }
+
+
+@router.post("/trigger-run", status_code=status.HTTP_202_ACCEPTED)
+async def trigger_run(
+    request: TriggerRunRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Trigger an analysis run on specified documents.
+
+    Validates all document_ids belong to requesting tenant, creates
+    an analysis_run record in QUEUED status.
+
+    Args:
+        request: Request body with document_ids and optional run_label.
+        current_user: Decoded JWT payload.
+        db: Async database session.
+
+    Returns:
+        Run metadata including run_id and status.
+    """
+    tenant_id = current_user.tenant_id
+    await set_tenant_context(db, tenant_id)
+
+    if not request.document_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "document_ids must not be empty",
+                }
+            },
+        )
+
+    # ── Confirm all document_ids belong to the requesting tenant ────
+    doc_count_stmt = (
+        select(func.count())
+        .select_from(Document)
+        .where(
+            Document.id.in_(request.document_ids),
+            Document.tenant_id == tenant_id,
+        )
+    )
+    result = await db.execute(doc_count_stmt)
+    owned_count = result.scalar() or 0
+
+    if owned_count != len(request.document_ids):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": {
+                    "code": "FORBIDDEN",
+                    "message": (
+                        "One or more document_ids do not belong to the "
+                        "requesting tenant or do not exist"
+                    ),
+                }
+            },
+        )
+
+    # ── Guard: all selected documents must be parse-complete ───────
+    docs_stmt = select(Document.id, Document.parse_status).where(
+        Document.id.in_(request.document_ids),
+        Document.tenant_id == tenant_id,
+    )
+    docs_result = await db.execute(docs_stmt)
+    docs = docs_result.fetchall()
+
+    not_ready_ids = [
+        str(row.id)
+        for row in docs
+        if str(row.parse_status) != "PARSED"
+    ]
+    if not_ready_ids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": {
+                    "code": "DOCUMENTS_NOT_READY",
+                    "message": (
+                        "One or more selected documents are still parsing. "
+                        "Wait for parse_status=PARSED, then trigger analysis again."
+                    ),
+                    "details": [
+                        {
+                            "field": "document_ids",
+                            "message": f"Not ready: {', '.join(not_ready_ids)}",
+                        }
+                    ],
+                }
+            },
+        )
+
+    # ── Create analysis run ─────────────────────────────────────────
+    run = await analysis_run_service.create_run(
+        tenant_id=tenant_id,
+        total_documents=len(request.document_ids),
+        db=db,
+    )
+    await db.flush()
+
+    # ── Update documents with run_id ────────────────────────────────
+    for doc_id in request.document_ids:
+        doc_stmt = select(Document).where(Document.id == doc_id)
+        doc_result = await db.execute(doc_stmt)
+        doc = doc_result.scalar_one_or_none()
+        if doc:
+            doc.run_id = run.id
+
+    await db.flush()
+
+    # ── Queue analysis run task (Phase 5) ──────────────────────────
+    run_analysis.delay(str(run.id), str(tenant_id))
+    logger.info(
+        "analysis_run_queued",
+        run_id=str(run.id),
+        tenant_id=str(tenant_id),
+        total=len(request.document_ids),
+    )
+
+    return {
+        "run_id": str(run.id),
+        "status": "QUEUED",
+        "total_documents": len(request.document_ids),
+        "created_at": str(run.created_at) if run.created_at else None,
+    }
+
+
+@router.get("/documents")
+async def list_documents(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    doc_type: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+) -> dict[str, Any]:
+    """List uploaded documents for the current tenant.
+
+    Supports optional doc_type filter and standard pagination.
+    """
+    from sqlalchemy import desc
+
+    tenant_id = current_user.tenant_id
+    await set_tenant_context(db, tenant_id)
+
+    base_filter = [Document.tenant_id == tenant_id]
+    if doc_type:
+        if doc_type not in VALID_DOC_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": f"Invalid doc_type '{doc_type}'. Must be one of: {', '.join(sorted(VALID_DOC_TYPES))}",
+                    }
+                },
+            )
+        base_filter.append(Document.doc_type == doc_type)
+
+    count_stmt = select(func.count()).select_from(Document).where(*base_filter)
+    count_result = await db.execute(count_stmt)
+    total_records = count_result.scalar() or 0
+    total_pages = max(1, (total_records + page_size - 1) // page_size)
+
+    data_stmt = (
+        select(Document)
+        .where(*base_filter)
+        .order_by(desc(Document.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    result = await db.execute(data_stmt)
+    docs = result.scalars().all()
+
+    data = [
+        {
+            "document_id": str(doc.id),
+            "filename": doc.original_filename,
+            "doc_type": doc.doc_type,
+            "file_size": doc.file_size,
+            "parse_status": doc.parse_status,
+            "created_at": str(doc.created_at) if doc.created_at else None,
+        }
+        for doc in docs
+    ]
+
+    return {
+        "data": data,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_records": total_records,
+            "total_pages": total_pages,
+        },
+    }
+
+
+@router.get("/runs")
+async def list_runs(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    status_filter: str | None = Query(None, alias="status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+) -> dict[str, Any]:
+    """List all analysis runs for the tenant.
+
+    Supports optional status filter and standard pagination.
+    Defined in API_CONTRACTS.md Section 3.5 but was not previously implemented.
+    """
+    from sqlalchemy import desc
+
+    tenant_id = current_user.tenant_id
+    await set_tenant_context(db, tenant_id)
+
+    base_filter = [AnalysisRun.tenant_id == tenant_id]
+    if status_filter:
+        base_filter.append(AnalysisRun.status == status_filter)
+
+    # Count
+    count_stmt = select(func.count()).select_from(AnalysisRun).where(*base_filter)
+    count_result = await db.execute(count_stmt)
+    total_records = count_result.scalar() or 0
+    total_pages = max(1, (total_records + page_size - 1) // page_size)
+
+    # Data
+    data_stmt = (
+        select(AnalysisRun)
+        .where(*base_filter)
+        .order_by(desc(AnalysisRun.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    result = await db.execute(data_stmt)
+    runs = result.scalars().all()
+
+    data = [
+        {
+            "run_id": str(run.id),
+            "status": run.status,
+            "total_documents": run.total_documents or 0,
+            "processed_documents": run.processed_documents or 0,
+            "progress_percentage": round(
+                ((run.processed_documents or 0) / (run.total_documents or 1)) * 100, 1
+            ),
+            "total_leakage_found": float(run.total_leakage_found or 0),
+            "leakage_record_count": run.leakage_record_count or 0,
+            "error_summary": run.error_summary,
+            "started_at": str(run.started_at) if run.started_at else None,
+            "completed_at": str(run.completed_at) if run.completed_at else None,
+            "created_at": str(run.created_at) if run.created_at else None,
+        }
+        for run in runs
+    ]
+
+    return {
+        "data": data,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_records": total_records,
+            "total_pages": total_pages,
+        },
+    }
+
+
+@router.get("/runs/{run_id}/status")
+async def get_run_status(
+    run_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Get the current status and progress of an analysis run.
+
+    Confirms run belongs to requesting tenant. Returns count of
+    leakage records by status for frontend progress display.
+
+    Args:
+        run_id: UUID of the analysis run.
+        current_user: Decoded JWT payload.
+        db: Async database session.
+
+    Returns:
+        Run status with progress information.
+    """
+    tenant_id = current_user.tenant_id
+    await set_tenant_context(db, tenant_id)
+
+    # ── Load run ────────────────────────────────────────────────────
+    stmt = select(AnalysisRun).where(
+        AnalysisRun.id == run_id,
+        AnalysisRun.tenant_id == tenant_id,
+    )
+    result = await db.execute(stmt)
+    run = result.scalar_one_or_none()
+
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": f"Analysis run {run_id} not found",
+                }
+            },
+        )
+
+    # ── Calculate progress ──────────────────────────────────────────
+    total = run.total_documents or 0
+    processed = run.processed_documents or 0
+    progress = round((processed / total * 100), 1) if total > 0 else 0.0
+
+    return {
+        "run_id": str(run.id),
+        "status": run.status,
+        "total_documents": total,
+        "processed_documents": processed,
+        "progress_percentage": progress,
+        "total_leakage_found": float(run.total_leakage_found or 0),
+        "leakage_record_count": run.leakage_record_count or 0,
+        "error_summary": run.error_summary,
+        "started_at": str(run.started_at) if run.started_at else None,
+        "completed_at": str(run.completed_at) if run.completed_at else None,
+        "created_at": str(run.created_at) if run.created_at else None,
+    }

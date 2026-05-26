@@ -1,0 +1,496 @@
+LeakSight V1 — Final Build Order Checklist (Updated)
+
+PHASE 0 — DOCUMENTATION FIRST (Before any code)
+0.1 — Write ARCHITECTURE.md
+Define the full system diagram: Upload → Parse → RAW Snapshot → Normalize → Canonical Store → Match → Apply Rules → Generate Leakage → Review → Report
+Document monolithic backend decision and why
+Document shared ingestion layer, shared document storage layer, shared hashing layer
+Document modular business logic per engine (Leakage, Tool A, Tool B)
+Define all service boundaries explicitly
+0.2 — Write DATABASE_SCHEMA.md
+Document all three layers in full: RAW, Canonical, Derived
+Define every table, every column, every data type, every constraint
+Document all six new systems: vendor_aliases, unit_conversion_factors, fx_rates, document_hashes, canonical_units, RLS policies
+Define all composite unique constraints (every unique key must include tenant_id)
+Define all indexes — individually and composite (see Phase 2 for specifics)
+Document the immutability trigger logic for leakage_records
+Document evidence_jsonb fixed internal schema including unit_conversion_details, fx_rate_applied, match_confidence_breakdown
+Document abbreviation_dictionary structure: what a default entry looks like, what fields it contains, whether V1 seeds any values
+0.3 — Write RULES_ENGINE.md
+Define Rule 1 (Invoice vs Contract Price) in full: contract validity check, unit conversion check, partial match handling, confidence calculation
+Define Rule 2 (Duplicate Invoice): exact duplicate definition, near-duplicate definition (amount + vendor + temporal proximity), window configuration
+Define Rule 3 (Quantity Mismatch): GRN override logic, PO fallback logic, missing GRN handling
+Define what happens when no rule fires (no leakage object created)
+Define confidence scoring logic for each rule
+Define what constitutes a valid human explanation string for each rule
+Define PENDING_FX_RATE flag conditions explicitly: missing rate on invoice date → PENDING_FX_RATE status, not an error, not a skip
+0.4 — Write PARSING_SPEC.md
+Define expected accuracy targets: ≥95% Excel, ≥85% digital PDF, ≥70% scanned PDF
+Define the normalized intermediate schema that every parser must output regardless of source format
+Define failure flagging behavior (no silent drops)
+Define which parser handles which format: pdfplumber for digital PDFs, camelot for complex tables, PaddleOCR + PP-Structure for scanned, pandas + openpyxl for Excel/CSV, python-docx for Word
+Define the raw_version row creation rule on re-parse
+Define parse confidence calculation logic
+Define parse confidence threshold enforcement: if parse_confidence < tenant.manual_review_threshold → document flagged, still processed, run rolls into PARTIAL_SUCCESS
+0.5 — Write API_CONTRACTS.md
+Define every endpoint: method, path, request schema, response schema, error codes
+Minimum endpoints to define: file upload, trigger analysis run, get run status, get leakage records, accept/reject leakage record, get vendor list, get contract list, get report, get dashboard summary
+Define pagination contracts
+Define all error response formats
+Define auth header contracts
+0.6 — Write CLAUDE.md
+Define coding conventions for the project
+Define how Claude (AI assistant) should be used in this codebase going forward
+Define which decisions are locked and cannot be reversed
+0.7 — Write DECISIONS.md
+Log every architectural decision already made with the reason
+First entries: no vector embeddings in V1, no outbound internet in workers, no real-time processing, monolithic backend, PaddleOCR over Tesseract, RapidFuzz over embeddings, WeasyPrint for PDF rendering, PostgreSQL RLS for tenant isolation
+
+PHASE 1 — INFRASTRUCTURE FOUNDATION
+1.1 — Repository Structure
+Create the root directory layout: /backend, /frontend, /workers, /infra, /docs, /scripts
+Create /backend/app with subdirectories: /api, /core, /db, /models, /parsers, /matching, /rules, /reporting, /tasks, /utils
+Create /docs and move all six spec documents here
+Initialize pyproject.toml or requirements.txt with all backend dependencies pinned to exact versions
+Initialize package.json for frontend
+1.2 — Docker Compose Setup
+Create docker-compose.yml with services: postgres, redis, backend, worker, nginx
+Define all environment variable references (no hardcoded secrets)
+Create .env.example with all required environment variables documented
+Confirm no outbound internet for worker container (network policy)
+Create named volumes for: postgres data, document storage, redis data
+1.3 — Logging Middleware (Do This Now, Not at Deployment)
+Create core/logging.py — structured logging configuration
+Enforce the following prohibition at the middleware level before any application code is written: never log raw document text, never log line-level financial amounts, never log PII (vendor names in raw form, invoice numbers, amounts)
+Log only: event type, document_id, run_id, tenant_id, task name, status, duration, error codes
+This rule is enforced here in Phase 1 so it is structurally impossible to violate later — not checked retrospectively at deployment
+1.4 — PostgreSQL Initialization
+Create init.sql or Alembic baseline with: UUID extension enabled, pg_trgm extension enabled (for future fuzzy search), RLS enforcement strategy
+Create the app_admin role (cross-tenant operations)
+Create the app_tenant_user role (RLS-restricted)
+Confirm FORCE ROW LEVEL SECURITY can be applied to all tenant tables
+1.5 — FastAPI Application Shell
+Create main.py with FastAPI app initialization
+Create core/config.py — all environment variable loading via Pydantic Settings
+Create core/database.py — SQLAlchemy async engine, session factory, dependency injection
+Create core/security.py — JWT decode stub, tenant_id extraction stub
+Create core/middleware.py — request logging middleware (using logging rules from 1.3), tenant context middleware (sets app.current_tenant_id per request for RLS)
+Create api/router.py — master router that mounts all sub-routers
+Confirm FastAPI app starts and returns 200 on /health
+1.6 — Alembic Setup
+Initialize Alembic with alembic init
+Configure alembic.ini and env.py to use the async SQLAlchemy engine
+Confirm migration runs cleanly against a blank PostgreSQL instance
+
+PHASE 2 — DATA MODEL IMPLEMENTATION
+Build the database in strict layer order: RAW first, then Canonical, then Derived.
+2.1 — RAW Layer Tables
+Create SQLAlchemy models and Alembic migration for:
+documents table — id (UUID), tenant_id, run_id (nullable at this stage), file_path, sha256_hash, doc_type (ENUM: INVOICE, CONTRACT, PO, GRN), file_size, page_count, created_at
+raw_parses table — id, document_id (FK), raw_version (integer), parser_version (string), structured_output_jsonb, parse_confidence (float), created_at
+Apply RLS policy to both tables on tenant_id
+Write unit test: confirm raw_parses cannot be updated once inserted (application-level enforcement at this stage, DB trigger in Phase 5)
+2.2 — Canonical Layer: Vendor Tables
+Create SQLAlchemy models and Alembic migration for:
+vendors table — id, tenant_id, normalized_name, raw_names_jsonb, gst_id (nullable), created_at
+vendor_aliases table — id, tenant_id, vendor_id (FK), alias_name, override_source (ENUM: MANUAL_REVIEW, IMPORT, AUTO_ACCEPTED), applied_by_user_id, created_at, is_active (boolean)
+Composite unique constraint on (tenant_id, alias_name) for vendor_aliases
+RLS on both tables
+Index on tenant_id, index on gst_id, index on alias_name
+2.3 — Canonical Layer: Unit & Currency Tables
+canonical_units table — id, name, symbol, dimension (ENUM: weight, volume, count, area, time)
+unit_conversion_factors table — id, from_unit_id (FK), to_unit_id (FK), factor (numeric, high precision), tenant_id (nullable — NULL = system default), created_at
+Composite UNIQUE on (from_unit_id, to_unit_id, tenant_id)
+Seed migration: insert all V1 seed units (MT, KG, G, L, ML, Nos, Box, Set, Sqft, Sqm, RMT) and their conversion factors
+fx_rates table — id, tenant_id (nullable), from_currency, to_currency, rate (numeric), rate_date, source (ENUM: ECB, RBI, MANUAL_UPLOAD, ADMIN_IMPORT), uploaded_by_user_id (nullable), created_at
+Index on (from_currency, to_currency, rate_date)
+2.4 — Canonical Layer: Contract Tables
+contracts table — id, tenant_id, vendor_id (FK), created_at
+contract_versions table — id, contract_id (FK), version_number, valid_from (date), valid_to (date), created_at
+contract_line_items table — id, contract_version_id (FK), item_desc, unit, unit_price (numeric), currency
+RLS on all three
+Index on (vendor_id, valid_from, valid_to) for contract version resolution query
+Write unit test for get_valid_contract_version(vendor_id, invoice_date) — covering: match found, overlap found (→ manual review flag), none found (→ skip Rule 1)
+2.5 — Canonical Layer: Invoice, PO, GRN Tables
+invoices table — id, tenant_id, vendor_id (FK), invoice_no, invoice_date, total_amount (numeric), currency
+invoice_line_items table — id, invoice_id (FK), item_desc, quantity (numeric), unit, unit_price (numeric), line_total (numeric)
+purchase_orders table — id, tenant_id, vendor_id (FK), po_no, po_date
+po_line_items table — id, po_id (FK), item_desc, unit, ordered_qty (numeric), unit_price (numeric)
+grns table — id, tenant_id, po_id (FK), grn_date
+grn_line_items table — id, grn_id (FK), item_desc, unit, received_qty (numeric)
+RLS on all six tables
+Composite unique constraint on (tenant_id, invoice_no) for invoices
+Add composite index on invoices: (tenant_id, vendor_id, invoice_date) — this is mandatory for Rule 2 near-duplicate scanning at 10,000+ invoices; without it the query degrades to a full table scan on filtered results
+2.6 — Derived Layer Tables
+analysis_runs table — id, tenant_id, status (ENUM: QUEUED, PROCESSING, PARTIAL_SUCCESS, COMPLETE, FAILED), error_summary (text, nullable), started_at, completed_at
+leakage_records table — id, tenant_id, run_id (FK), leakage_type (ENUM: PRICE_MISMATCH, DUPLICATE_INVOICE, QUANTITY_MISMATCH), amount (numeric), currency, confidence (float 0–1), evidence_jsonb, rule_applied, status (ENUM: PENDING, ACCEPTED, REJECTED, PENDING_FX_RATE), review_notes (text, nullable), created_at
+RLS on both tables
+document_hashes table — id, document_id (FK), tenant_id, hash_sha256, hash_type (ENUM: BASELINE, REUPLOAD, PERIODIC_CHECK), upload_sequence (integer), comparison_status (ENUM: NEW, UNCHANGED, MODIFIED, INCONCLUSIVE), comparison_against_id (nullable FK to self), metadata_jsonb, risk_score (integer 0–100), flagged_anomalies_jsonb, created_at
+2.7 — Tenant Settings Table
+tenant_settings table — tenant_id (PK), abbreviation_dictionary (jsonb), fuzzy_threshold (float), duplicate_window_days (integer), manual_review_threshold (float), base_currency (char 3)
+Seed defaults: fuzzy_threshold = 0.85, duplicate_window_days = 30, manual_review_threshold = 0.70, base_currency = INR
+Seed abbreviation_dictionary with V1 defaults: document this structure explicitly — each entry is a key-value pair of raw abbreviation to normalized form (e.g. "MT" → "metric_ton", "NOS" → "nos"), stored as a flat JSON object, tenant can extend it but not delete system defaults
+Write migration test: confirm abbreviation_dictionary column exists, confirm default seed value is a valid JSON object, confirm it is accessible from the normalization service in Phase 3
+2.8 — Run Full Migration + Validation
+Run all Alembic migrations against clean database
+Confirm all tables created, all constraints applied, all RLS policies active
+Confirm FORCE ROW LEVEL SECURITY is enforced on all tenant tables
+Confirm composite index on (tenant_id, vendor_id, invoice_date) exists on invoices table
+Write a test that confirms cross-tenant data bleed is impossible
+
+PHASE 3 — CORE BACKEND SERVICES (No parsing yet)
+3.1 — Tenant Context Service
+Create core/tenant_context.py — function that sets app.current_tenant_id as a PostgreSQL session local variable
+This must be called at the start of every request and every Celery task
+Write test: confirm RLS blocks cross-tenant query when tenant_id is set
+3.2 — Vendor Normalization Service
+Create matching/vendor_normalizer.py
+Function: normalize_vendor_name(raw_name) → string (lowercase, strip legal suffixes like Pvt Ltd / LLC, strip punctuation)
+Function: generate_blocking_key(normalized_name) → string (first significant token)
+Write unit tests covering: "Tata Steel Pvt Ltd" → normalized, "TATA STEEL" → same blocking key
+3.3 — Vendor Matching Service
+Create matching/vendor_matcher.py
+Implement matching order exactly as specified: 
+Exact GST match (if GST ID present on both sides)
+vendor_aliases lookup (alias hit = 100% confidence, stop here)
+Blocking key filter (reduces candidate set)
+RapidFuzz token_sort_ratio against candidates
+Below fuzzy_threshold → return NEEDS_MANUAL_REVIEW result
+Return object must include: matched_vendor_id (nullable), confidence (float), match_method (ENUM: GST_EXACT, ALIAS, FUZZY, NO_MATCH)
+Write unit tests for each match path
+3.4 — Item Normalization Service
+Create matching/item_normalizer.py
+Function: normalize_item_desc(raw_desc) → string
+Load abbreviation_dictionary from tenant_settings at service init — this is now guaranteed to exist from Phase 2.7
+Apply abbreviation substitution before any fuzzy logic
+Write unit tests covering: known abbreviation resolves correctly, unknown abbreviation passes through unchanged
+3.5 — Unit Conversion Service
+Create core/unit_converter.py
+Function: convert_units(value, from_unit, to_unit, tenant_id) → ConversionResult
+ConversionResult includes: converted_value, factor_used, factor_source (SYSTEM / TENANT_OVERRIDE)
+Raise explicit error on cross-dimension conversion attempt — never silently convert
+Write unit tests: KG to MT (valid), KG to L (cross-dimension error), MT to KG (reverse lookup)
+3.6 — FX Rate Service
+Create core/fx_service.py
+Function: get_rate(from_currency, to_currency, invoice_date, tenant_id) → FXResult | PENDING_FX_RATE
+Lookup logic: closest rate_date ≤ invoice_date in fx_rates table
+If no rate found → return PENDING_FX_RATE sentinel (do not error, do not guess)
+Write unit tests: rate found, rate missing, tenant override rate
+3.7 — Contract Version Resolution Service
+Create core/contract_resolver.py
+Function: get_valid_contract_version(vendor_id, invoice_date, tenant_id) → ContractVersion | OVERLAP | NONE
+Write unit tests: clean match, overlapping versions, no valid version
+3.8 — Rules Engine
+Create rules/rule_engine.py — orchestrator that takes a matched invoice line item and runs applicable rules
+Create rules/rule1_price_mismatch.py 
+Check contract validity on invoice date (use contract resolver)
+Check unit compatibility (use unit converter)
+Calculate overcharge amount: (invoice_unit_price - contract_unit_price_converted) × quantity
+Populate evidence_jsonb with all required fields including unit_conversion_details and fx_rate_applied
+Generate human-readable explanation string
+Return LeakageRecord object or None
+Create rules/rule2_duplicate_invoice.py 
+Exact duplicate: same invoice_no + same vendor + same tenant
+Near duplicate: same vendor + same amount + within duplicate_window_days — this query uses the composite index (tenant_id, vendor_id, invoice_date) created in Phase 2.5
+Return LeakageRecord or None
+Create rules/rule3_quantity_mismatch.py 
+GRN override: if GRN exists, compare invoice qty vs GRN received_qty
+PO fallback: if no GRN, compare invoice qty vs PO ordered_qty
+If neither exists: skip rule, do not flag
+Return LeakageRecord or None
+Write unit tests for every rule covering: leakage found, no leakage, missing data (graceful skip)
+3.9 — Leakage Record Service
+Create services/leakage_service.py
+Function: create_leakage_record(...) — writes to DB
+Function: accept_leakage_record(id, tenant_id) — changes status to ACCEPTED, triggers immutability
+Function: reject_leakage_record(id, notes, tenant_id) — changes status to REJECTED
+Immutability enforcement: once ACCEPTED, block edits to amount, leakage_type, confidence, evidence_jsonb, rule_applied
+All reviewer actions must be logged with user_id and timestamp
+Write unit tests: accept flow, reject flow, attempt edit after accept (must fail)
+3.10 — Analysis Run Service
+Create services/analysis_run_service.py
+Function: create_run(tenant_id) → AnalysisRun
+Function: update_run_status(run_id, status, error_summary=None)
+Function: get_run_summary(run_id, tenant_id) → RunSummary
+
+PHASE 4 — FILE INGESTION & PARSING PIPELINE
+4.1 — File Ingestion Endpoint
+Create api/endpoints/ingest.py
+POST /api/v1/ingest/upload — accepts multipart file upload
+Validate: max file size 200MB, supported formats only (PDF, XLSX, XLS, CSV, DOCX)
+Compute SHA-256 hash on upload
+Store file to object storage path (local volume in V1)
+Create documents row in DB
+Create document_hashes BASELINE record
+Return document_id
+Write integration test: upload valid file, upload oversized file (reject), upload unsupported format (reject)
+4.2 — Parser Base Class
+Create parsers/base_parser.py
+Define abstract base class with: parse(file_path) → ParseResult
+ParseResult must include: normalized intermediate schema, parse_confidence (float), raw_extracted_data, failure_flags list
+Failure flags are mandatory — no silent drops
+4.3 — Excel/CSV Parser
+Create parsers/excel_parser.py
+Uses pandas + openpyxl
+Must detect header row automatically
+Must produce normalized intermediate schema
+Accuracy target: ≥95% for clean Excel
+Write unit tests with sample Excel files: clean invoice, clean contract rate card, malformed headers
+4.4 — Digital PDF Parser
+Create parsers/pdf_digital_parser.py
+Uses pdfplumber for text extraction
+Uses camelot for complex table extraction
+Must detect if PDF is digital (not scanned) before using this parser
+Must produce normalized intermediate schema
+Accuracy target: ≥85%
+Write unit tests with sample digital PDFs
+4.5 — Scanned PDF Parser
+Create parsers/pdf_scanned_parser.py
+Uses PaddleOCR + PP-Structure
+Must detect if PDF is scanned (image-based) before routing here
+Accuracy target: ≥70%, manual assist allowed for failures
+Write unit tests with sample scanned PDFs
+Confirm no Tesseract dependency exists anywhere
+4.6 — Word Parser
+Create parsers/word_parser.py
+Uses python-docx
+Produces normalized intermediate schema
+4.7 — Parser Router
+Create parsers/parser_router.py
+Function: route_to_parser(document) → ParseResult
+Detection logic: file extension + content sniffing (check if PDF contains image layers)
+If detection ambiguous: default to digital PDF parser, flag uncertainty
+4.8 — Parse Confidence Threshold Enforcement
+After every parse result is returned by any parser, apply the following logic before writing to DB: 
+If parse_confidence >= tenant.manual_review_threshold → proceed normally
+If parse_confidence < tenant.manual_review_threshold → set a low_confidence flag on the document, still write the raw_parse row, still proceed to normalization, mark run status as PARTIAL_SUCCESS (do not halt processing)
+This logic lives in services/parse_storage_service.py (see 4.9) as part of the storage step, not inside the individual parsers — parsers only return confidence, they do not make routing decisions
+Write tests: high confidence document → proceeds clean, low confidence document → flagged + still processed + run becomes PARTIAL_SUCCESS
+4.9 — Parse Storage Service
+Create services/parse_storage_service.py
+After parsing: apply confidence threshold check (4.8), then write raw_parses row with structured_output_jsonb + parse_confidence + any flags
+Re-parse: create new raw_version row, never update existing
+Write test: re-parse creates new row, does not overwrite old row
+4.10 — Normalization Pipeline
+Create services/normalization_service.py
+Takes raw_parse output → writes to Canonical layer tables
+Order of operations: normalize vendor → match/create vendor record → normalize items using abbreviation_dictionary from tenant_settings → write contract/invoice/PO/GRN canonical rows
+All manual overrides must be persisted and auditable
+Write integration test: full file → canonical record created
+
+PHASE 5 — CELERY TASK PIPELINE
+5.1 — Celery Configuration
+Create core/celery_app.py — Celery app initialized with Redis broker and Redis result backend
+Configure: task serializer JSON, no outbound internet access for workers, task time limits
+Confirm worker starts and connects to Redis
+5.2 — Parse Task
+Create tasks/parse_task.py
+Task: parse_document(document_id, tenant_id)
+Sets tenant context at task start (call tenant_context service before any DB operation)
+Calls parser router
+Calls parse storage service (which applies confidence threshold enforcement from 4.8)
+On failure: update document status, write failure flag, do not raise silently
+Write test: task completes, task fails gracefully
+5.3 — Normalization Task
+Create tasks/normalize_task.py
+Task: normalize_document(raw_parse_id, tenant_id)
+Sets tenant context
+Calls normalization service
+Chains from parse_task on success
+5.4 — Analysis Run Task
+Create tasks/analysis_run_task.py
+Task: run_analysis(run_id, tenant_id)
+Sets tenant context
+Loads all canonical invoices for the run
+For each invoice line item: run vendor matching → run contract resolution → run rules engine → create leakage records
+Run status logic (explicit, not implied): 
+All documents parsed and all invoice line items processed cleanly → status = COMPLETE
+One or more documents had parse_confidence < manual_review_threshold → status = PARTIAL_SUCCESS
+One or more invoice line items resulted in PENDING_FX_RATE → status = PARTIAL_SUCCESS
+Both of the above present → status = PARTIAL_SUCCESS
+Unhandled exception on the run itself → status = FAILED, write error_summary
+PARTIAL_SUCCESS and FAILED can coexist per document but the run-level status reflects the worst non-fatal state
+On any unhandled exception at run level: set status FAILED, write error_summary, do not silently drop
+5.5 — DB Immutability Trigger
+Write Alembic migration to add PostgreSQL trigger on leakage_records
+Trigger fires on UPDATE: if OLD.status = 'ACCEPTED' and any of (amount, leakage_type, confidence, evidence_jsonb, rule_applied) are changing → RAISE EXCEPTION
+Write test: attempt to update accepted record at DB level (must fail)
+
+PHASE 6 — API LAYER
+6.1 — Authentication Middleware
+Create api/dependencies/auth.py
+JWT decode function — extract user_id and tenant_id
+Dependency injection: get_current_user used in all protected routes
+For V1 this can be simple JWT — no OAuth needed
+6.2 — Ingest API
+Complete api/endpoints/ingest.py (started in Phase 4.1)
+POST /api/v1/ingest/upload — file upload → document_id returned
+POST /api/v1/ingest/trigger-run — triggers analysis_run task → run_id returned
+GET /api/v1/ingest/run/{run_id}/status — returns run status + progress
+6.3 — Leakage API
+Create api/endpoints/leakage.py
+GET /api/v1/leakage/records — paginated list, filterable by status, leakage_type, vendor, run_id
+GET /api/v1/leakage/records/{id} — single record with full evidence_jsonb
+POST /api/v1/leakage/records/{id}/accept — accept with optional note
+POST /api/v1/leakage/records/{id}/reject — reject with required note
+GET /api/v1/leakage/summary — aggregate: total leakage amount, count by type, count by status
+6.4 — Vendor API
+Create api/endpoints/vendors.py
+GET /api/v1/vendors — list vendors for tenant
+POST /api/v1/vendors/{id}/aliases — add alias manually
+PUT /api/v1/vendors/{id}/aliases/{alias_id}/deactivate — deactivate alias
+6.5 — Contract API
+Create api/endpoints/contracts.py
+GET /api/v1/contracts — list contracts with active versions
+GET /api/v1/contracts/{id}/versions — list all versions
+POST /api/v1/contracts — create contract + first version with line items
+6.6 — Report API
+Create api/endpoints/reports.py
+GET /api/v1/reports/run/{run_id}/summary — CFO one-pager data
+GET /api/v1/reports/run/{run_id}/evidence-pack — triggers PDF generation, returns file
+GET /api/v1/reports/run/{run_id}/export-excel — triggers Excel export, returns file
+6.7 — Admin API
+Create api/endpoints/admin.py
+POST /api/v1/admin/fx-rates/upload — bulk upload FX rates
+GET /api/v1/admin/fx-rates — list current rates
+PUT /api/v1/admin/tenant-settings — update fuzzy threshold, duplicate window, base currency, abbreviation dictionary
+
+PHASE 7 — REPORTING ENGINE
+7.1 — Report Data Assembler
+Create reporting/report_assembler.py
+Function: assemble_cfo_summary(run_id, tenant_id) → CFOSummaryData
+Must answer: total leakage amount, from which vendors, by which rule, at what confidence
+Function: assemble_evidence_pack(run_id, tenant_id) → EvidencePackData
+Each leakage finding must be fully defensible: contract clause reference, invoice line reference, calculation shown
+7.2 — HTML Template Layer
+Create reporting/templates/cfo_summary.html — Jinja2 template for CFO one-pager
+Create reporting/templates/evidence_pack.html — Jinja2 template for full evidence report
+Design principle: readable, not beautiful — plain tables, clear numbers, clear source references
+7.3 — PDF Renderer
+Create reporting/pdf_renderer.py
+Uses WeasyPrint as the renderer abstraction
+Function: render_to_pdf(template_name, context) → bytes
+Wrap in abstraction layer so renderer can be swapped without touching report assembler
+7.4 — Excel Export
+Create reporting/excel_exporter.py
+Uses openpyxl
+Export: one sheet per leakage type, summary sheet with totals, vendor breakdown sheet
+
+PHASE 8 — NOTIFICATION SYSTEM
+8.1 — Notification Service
+Create services/notification_service.py
+In-app notification: write to a notifications table (id, tenant_id, user_id, message, run_id, read_at, created_at)
+Email notification: use SMTP (no external email API) — configurable SMTP settings in tenant settings
+Trigger: called by analysis_run_task on COMPLETE or PARTIAL_SUCCESS
+Notification message must differ between COMPLETE and PARTIAL_SUCCESS — PARTIAL_SUCCESS message must tell the user how many documents were flagged and whether any records are PENDING_FX_RATE so they know what action is required
+
+PHASE 9 — FRONTEND
+9.1 — Frontend Foundation
+Initialize React + TypeScript project
+Install and configure: TanStack Query, TanStack Table, React Router
+Create API client layer (src/api/client.ts) — all API calls go through this, never fetch directly from components
+Create auth context (src/context/AuthContext.tsx) — stores JWT, tenant_id, user info
+Create protected route wrapper
+9.2 — Upload Screen
+Create src/pages/Upload.tsx
+Drag and drop file upload
+Show upload progress
+Show parse status after upload (polling run status endpoint)
+Show error state if parse fails
+Show low-confidence warning if document was flagged in Phase 4.8
+9.3 — Dashboard Screen
+Create src/pages/Dashboard.tsx
+Summary cards: total leakage amount, count by type, pending review count, PENDING_FX_RATE count
+Recent runs table using TanStack Table — show PARTIAL_SUCCESS distinctly from COMPLETE so the user knows action is required
+All data read-only as per PRD
+9.4 — Leakage Review Screen
+Create src/pages/LeakageReview.tsx
+Full paginated table of leakage records using TanStack Table
+Filters: status, leakage type, vendor, date range
+Row click → detail drawer
+Detail drawer: shows full evidence_jsonb in human-readable form, shows calculation, shows source document references
+Accept button, Reject button (reject requires note input)
+PENDING_FX_RATE records shown with a clear indicator that they are blocked pending rate upload
+9.5 — Vendor Management Screen
+Create src/pages/Vendors.tsx
+List vendors with their aliases
+Add alias form
+Deactivate alias button
+9.6 — Reports Screen
+Create src/pages/Reports.tsx
+Select run → generate CFO summary → download button
+Select run → generate evidence pack PDF → download button
+Select run → export Excel → download button
+9.7 — Admin Screen
+Create src/pages/Admin.tsx
+FX rate upload form
+Tenant settings form (fuzzy threshold, duplicate window, base currency)
+Abbreviation dictionary editor: view current entries, add new entry, cannot delete system defaults
+
+PHASE 10 — INTEGRATION TESTING & HARDENING
+10.1 — End-to-End Test: Full Leakage Detection Flow
+Upload a contract with known pricing → parse → normalize → upload invoice with known overcharge → parse → normalize → trigger run → confirm leakage record created with correct amount and correct evidence → accept record → confirm immutability → generate report
+10.2 — End-to-End Test: Duplicate Invoice Flow
+Upload two identical invoices → trigger run → confirm duplicate detected → confirm evidence_jsonb populated correctly
+Upload two near-duplicate invoices within duplicate_window_days → confirm near-duplicate detected using the composite index path
+10.3 — End-to-End Test: Quantity Mismatch Flow
+Upload PO + GRN + invoice with over-quantity → trigger run → confirm quantity mismatch detected with GRN as authority
+10.4 — End-to-End Test: Partial Success Flows
+Upload a low-confidence scanned PDF → confirm document flagged, still processed, run status = PARTIAL_SUCCESS, user notified with correct message
+Upload invoice with currency mismatch and no FX rate → confirm PENDING_FX_RATE status on leakage record, run status = PARTIAL_SUCCESS, admin notified to upload rate
+Upload FX rate → re-trigger run → confirm PENDING_FX_RATE records resolve correctly
+10.5 — Multi-Tenant Isolation Test
+Create two tenants → upload data for tenant A → confirm tenant B queries return zero results → confirm RLS is active at DB level → confirm vendor_aliases are tenant-isolated (no cross-tenant alias bleed)
+10.6 — Messy Data Stress Tests
+Upload invoice with no matching contract → confirm Rule 1 skipped, no leakage created
+Upload invoice with missing GRN and missing PO → confirm Rule 3 skipped
+Upload invoice with cross-dimension unit mismatch → confirm explicit error raised, not a silent skip
+10.7 — Performance Test
+Load 10,000 invoice rows for a single tenant → confirm processing completes within hours → confirm near-duplicate scan uses composite index (verify with EXPLAIN ANALYZE) → confirm no memory leak in workers
+10.8 — Immutability Test
+Accept a leakage record → attempt to update amount via API → must return 403 → attempt to update amount directly via DB → trigger must block it
+10.9 — Logging Compliance Test
+Run full end-to-end flow → inspect all logs → confirm zero instances of raw document text, financial amounts, or PII in any log output → this test must be automated, not a manual spot check
+
+PHASE 11 — DEPLOYMENT PREPARATION
+11.1 — Environment Configuration
+Confirm all secrets are in environment variables, none hardcoded
+Confirm .env.example is complete and documented
+Confirm Docker Compose production variant exists with no debug flags
+11.2 — Nginx Configuration
+Configure reverse proxy to FastAPI
+Set upload size limits (200MB)
+Configure TLS termination
+11.3 — Database Backup
+Configure automated PostgreSQL backup (pg_dump) to local volume
+Test restore procedure
+11.4 — Worker Monitoring
+Confirm Celery task failures are logged and surfaced
+Confirm failed tasks do not silently disappear
+11.5 — Final Pre-Pilot Checklist
+All six spec documents exist and are accurate to what was actually built (update any that drifted during implementation)
+All RLS policies confirmed active
+Encryption at rest confirmed for document storage volume
+Encryption in transit confirmed (TLS on all endpoints)
+Audit logs writing correctly for all review actions
+Data deletion workflow exists (tenant data can be fully removed on request)
+Client notification (in-app + email) confirmed working for both COMPLETE and PARTIAL_SUCCESS states
+Logging compliance confirmed: no raw document text, no line-level financial amounts, no PII in any log output (automated test from 10.9 passing)
+Composite index on (tenant_id, vendor_id, invoice_date) confirmed present and being used by Rule 2 query
+Abbreviation dictionary confirmed seeded with system defaults and accessible to normalization service
+
+BUILD ORDER SUMMARY (Quick Reference)
+Phase 0  →  Spec Documents (7 docs, including abbreviation_dictionary structure)
+Phase 1  →  Infrastructure (Docker, DB, FastAPI shell, logging rules enforced at source)
+Phase 2  →  Data Model (RAW → Canonical → Derived, composite index on invoices, abbreviation_dictionary seeded)
+Phase 3  →  Core Business Logic Services (rules, matching, unit conversion, FX)
+Phase 4  →  File Ingestion & Parsing Pipeline (including confidence threshold enforcement step)
+Phase 5  →  Celery Task Pipeline (explicit PARTIAL_SUCCESS logic in analysis_run_task)
+Phase 6  →  API Layer
+Phase 7  →  Reporting Engine
+Phase 8  →  Notifications (COMPLETE vs PARTIAL_SUCCESS messages differ)
+Phase 9  →  Frontend (PARTIAL_SUCCESS and PENDING_FX_RATE surfaced distinctly in UI)
+Phase 10 →  Integration Testing & Hardening (logging compliance test automated)
+Phase 11 →  Deployment Preparation
+Non-negotiable rule: do not begin a phase until every item in the previous phase has a passing test or confirmed working state. The order is not a suggestion — it reflects hard dependencies.
+

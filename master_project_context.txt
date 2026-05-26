@@ -1,0 +1,76 @@
+﻿MASTER PROJECT CONTEXT FILE
+
+LeakSight û Enterprise Commercial Intelligence Suite
+Master Context
+LeakSight is an enterprise financial control software suite designed to detect commercial and financial risk in vendor transactions.
+The system is not:
+an ERP
+a payment processor
+a procurement workflow
+a predictive analytics tool
+The system is:
+a post-facto verification engine
+a financial control layer
+an audit-grade evidence generator 
+LeakSight v1 - PRD
+
+Core Philosophy
+The product is built around three truths:
+Commercial Truth û What was contractually agreed
+Operational Truth û What was ordered/received
+Financial Truth û What was invoiced and paid
+Leakage exists when Financial Truth exceeds Commercial or Operational Truth 
+LeakSight v1 - PRD
+.
+The system must always:
+Be deterministic
+Be explainable
+Produce audit-grade proof
+Never guess missing financial values
+Never make pricing assumptions
+
+PRODUCT STRUCTURE (V1.1)
+LeakSight V1.1 is structured as a modular suite 
+LeakSight v1.1 - PRD
+:
+Core Module û Vendor Price Leakage Detection Engine
+Tool A û Contract Structuring & ERP Mapping Engine
+Tool B û Document Integrity & Tamper Detection Engine
+Each module:
+Can operate independently
+Can be sold independently
+Can integrate optionally 
+LeakSight v1.1 - PRD
+Priority order must not be reversed:
+Leakage
+Contract Structuring
+Tamper Detection 
+LeakSight v1.1 - PRD
+
+MODULE 1 û LEAKAGE ENGINE (CORE REVENUE WEDGE)
+Objective
+Detect recoverable financial leakage.
+Supported Leakage Types
+Invoice vs Contract price mismatch
+Duplicate invoices
+Quantity mismatch (Invoice vs PO/GRN) 
+LeakSight v1.1 - PRD
+Workflow
+.venv\Scripts\python.exe : Traceback (most recent call last):
+At line:1 char:49
++ ... ght v1 -1"; .venv\Scripts\python.exe extract_docx.py "leaksight MASTE ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last) 
+   ::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "D:\c\Downloads\Leaksight v1 -1\extract_docx.py", line 8, in 
+<module>
+    print(p.text)
+    ~~~~~^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.
+3312.0_x64__qbz5n2kfra8p0\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in 
+position 7: character maps to <undefined>

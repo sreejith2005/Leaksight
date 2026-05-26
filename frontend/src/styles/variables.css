@@ -1,0 +1,176 @@
+:root {
+  /* ═══════════════════════════════════════════
+     LEAKSIGHT — LEDGER NOIR DESIGN SYSTEM
+     ═══════════════════════════════════════════ */
+
+  /* ── Backgrounds ── */
+  --bg-base: #08090D;
+  --bg-surface-1: #0F1117;
+  --bg-surface-2: #161822;
+  --bg-surface-3: #1E2030;
+  --bg-elevated: #252840;
+
+  /* ── Text ── */
+  --text-primary: #E8E9ED;
+  --text-secondary: #8B8FA3;
+  --text-muted: #4E5166;
+  --text-inverse: #08090D;
+
+  /* ── Accent — Gilt Gold ── */
+  --accent: #C9A84C;
+  --accent-hover: #D4B85E;
+  --accent-dim: rgba(201, 168, 76, 0.12);
+  --accent-border: rgba(201, 168, 76, 0.25);
+
+  /* ── Semantic ── */
+  --color-success: #2DA66B;
+  --color-success-dim: rgba(45, 166, 107, 0.12);
+  --color-danger: #D94848;
+  --color-danger-dim: rgba(217, 72, 72, 0.12);
+  --color-warning: #D4A72C;
+  --color-warning-dim: rgba(212, 167, 44, 0.12);
+  --color-info: #4B8FD4;
+  --color-info-dim: rgba(75, 143, 212, 0.12);
+
+  /* ── Borders ── */
+  --border-subtle: rgba(139, 143, 163, 0.08);
+  --border-default: rgba(139, 143, 163, 0.15);
+  --border-strong: rgba(139, 143, 163, 0.25);
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.6);
+  --shadow-glow: 0 0 20px rgba(201,168,76,0.08);
+
+  /* ── Border radius ── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* ── Typography ── */
+  --font-display: 'Newsreader', 'Georgia', serif;
+  --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+  --text-3xl: 36px;
+  --text-4xl: 48px;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ── Spacing ── */
+  --space-0: 0px;
+  --space-px: 1px;
+  --space-0\.5: 2px;
+  --space-1: 4px;
+  --space-1\.5: 6px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* ── Layout ── */
+  --sidebar-width: 260px;
+  --topbar-height: 64px;
+  --content-max-width: 1400px;
+  --content-padding: 32px;
+
+  /* ── Transitions ── */
+  --transition-fast: 100ms ease;
+  --transition-base: 150ms ease;
+  --transition-slow: 200ms ease-out;
+  --transition-modal: 200ms ease-out;
+
+  /* ═══ Legacy aliases (backward compat) ═══ */
+  --color-black: var(--bg-base);
+  --color-prussian-blue: var(--bg-surface-1);
+  --color-orange: var(--accent);
+  --color-grey: var(--text-primary);
+  --color-white: #ffffff;
+  --color-muted: var(--text-secondary);
+  --border-radius: var(--radius-sm);
+  --border-color: var(--accent-border);
+  --color-border: var(--border-default);
+  --color-error: var(--color-danger);
+  --font-family: var(--font-body);
+}
+
+/* ═══════════════════════════════════════════
+   LIGHT MODE — Financial Report Paper
+   ═══════════════════════════════════════════
+   Activated via data-theme="light" on <html>.
+   Every color-bearing variable is overridden;
+   typography, spacing, layout and radius tokens
+   are theme-invariant and inherited from :root.
+   ═══════════════════════════════════════════ */
+
+[data-theme="light"] {
+  /* ── Backgrounds ── */
+  --bg-base: #F5F4F0;           /* warm off-white, like financial report paper */
+  --bg-surface-1: #FFFFFF;      /* primary cards and surfaces */
+  --bg-surface-2: #F0EEE9;     /* secondary surfaces, table alternates */
+  --bg-surface-3: #E8E5DE;     /* hover states */
+  --bg-elevated: #FFFFFF;      /* modals, dropdowns */
+
+  /* ── Text ── */
+  --text-primary: #1A1814;     /* near-black with warm undertone */
+  --text-secondary: #5C5750;   /* secondary labels */
+  --text-muted: #9C9590;       /* disabled, tertiary */
+  --text-inverse: #FFFFFF;     /* text on gold/primary buttons */
+
+  /* ── Accent — Institutional Gold ── */
+  --accent: #9A6F1E;           /* darker gold — WCAG AA on white (4.56:1) */
+  --accent-hover: #B07F28;
+  --accent-dim: rgba(154, 111, 30, 0.10);
+  --accent-border: rgba(154, 111, 30, 0.25);
+
+  /* ── Semantic ── */
+  --color-success: #1D8A56;
+  --color-success-dim: rgba(29, 138, 86, 0.10);
+  --color-danger: #C53030;
+  --color-danger-dim: rgba(197, 48, 48, 0.10);
+  --color-warning: #B8860B;
+  --color-warning-dim: rgba(184, 134, 11, 0.10);
+  --color-info: #2B6CB0;
+  --color-info-dim: rgba(43, 108, 176, 0.10);
+
+  /* ── Borders ── */
+  --border-subtle: rgba(26, 24, 20, 0.08);
+  --border-default: rgba(26, 24, 20, 0.15);
+  --border-strong: rgba(26, 24, 20, 0.30);
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 20px rgba(154, 111, 30, 0.10);
+
+  /* ═══ Legacy aliases (backward compat) ═══ */
+  --color-black: var(--bg-base);
+  --color-prussian-blue: var(--bg-surface-1);
+  --color-orange: var(--accent);
+  --color-grey: var(--text-primary);
+  --color-white: #ffffff;
+  --color-muted: var(--text-secondary);
+  --border-color: var(--accent-border);
+  --color-border: var(--border-default);
+  --color-error: var(--color-danger);
+}

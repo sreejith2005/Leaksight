@@ -1,0 +1,285 @@
+PRODUCT REQUIREMENTS DOCUMENT (PRD)
+Vendor Price Leakage Detection Engine
+Owner: Kavish Solanki (Founder & CEO, LeakSight)
+Primary Consumer: Technical Co-founder
+Goal of this PRD: Remove ambiguity. Prevent over-engineering. Enable fast, correct build.
+
+0. EXECUTIVE CONTEXT (WHY THIS EXISTS)
+This product exists to answer one question only:
+“Did we pay vendors more than what we contractually agreed — and can we prove it?”
+Everything in V1 must serve this question.
+Anything that does not directly support this is explicitly out of scope.
+
+1. SYSTEM BOUNDARIES (VERY IMPORTANT)
+1.1 What This Product IS
+A verification and detection layer
+A post-facto financial control
+A forensic engine producing audit-grade evidence
+1.2 What This Product IS NOT
+Not an ERP
+Not a payments system
+Not a procurement workflow tool
+Not a predictive analytics platform
+Not real-time in V1
+This boundary must be enforced in architecture decisions.
+
+2. CORE CONCEPTUAL MODEL (HOW THE SYSTEM THINKS)
+The system operates on three truths:
+Commercial Truth → What was contractually agreed
+Operational Truth → What was ordered / received
+Financial Truth → What was invoiced and paid
+Leakage exists when Financial Truth > Commercial or Operational Truth.
+All logic flows from this.
+
+3. VERSIONING PHILOSOPHY
+No version should invalidate the previous one.
+
+4. VERSION 1 — FULL TECHNICAL & FUNCTIONAL SPEC
+4.1 V1 NON-NEGOTIABLE OBJECTIVES
+Detect hard ₹ overbilling
+Produce human-readable proof
+Be executable within 10–14 days per client
+Be safe enough for enterprise data
+Enable paid pilots
+
+4.2 DATA DOMAINS (CANONICAL)
+4.2.1 Vendor Domain
+Vendor identity is random or probabilistic, not absolute
+Normalization must exist as a first-class concept
+Manual override must be supported
+Fields (minimum):
+Raw vendor name
+Normalized vendor ID
+Optional tax/GST ID
+Source system reference
+
+4.2.2 Contract Domain (Commercial Truth)
+Contracts are treated as pricing truth, not legal documents.
+We ONLY care about:
+Item / service Description
+Unit price
+Unit of measure
+Validity period
+Explicitly ignore:
+Payment terms
+Legal clauses
+Penalties
+SLAs
+Contracts may be:
+Clean rate cards
+Messy PDFs
+Multiple appendices
+System must tolerate ambiguity.
+
+4.2.3 PO / GRN Domain (Operational Truth)
+PO defines intent.
+GRN defines receipt.
+Hierarchy:
+GRN overrides PO
+PO overrides nothing else
+System must support missing GRNs.
+
+4.2.4 Invoice Domain (Financial Truth)
+Invoice is the only document that creates leakage.
+Invoice line items are the atomic unit of detection.
+
+4.3 DOCUMENT INGESTION REQUIREMENTS
+Supported Formats (V1)
+PDF (digital + scanned)
+Excel (.xls, .xlsx)
+CSV
+Explicit Requirements
+Bulk upload support
+Partial uploads allowed
+Re-upload overwrite supported
+Files must be traceable to source
+No API ingestion in V1.
+
+4.4 PARSING REQUIREMENTS (DEEP)
+4.4.1 Parsing Accuracy Expectations
+≥95% accuracy for Excel
+≥85% accuracy for digital PDFs
+≥70% accuracy for scanned PDFs (manual assist allowed)
+Failure cases must be flagged, not silently dropped.
+
+4.4.2 Parsing Output Contract (CRITICAL)
+Every parsed document must output a normalized intermediate schema, even if partially filled.
+No downstream logic should parse raw files.
+
+4.5 NORMALIZATION ENGINE (FIRST-CLASS SYSTEM)
+Normalization is not a helper function.
+It is a system component.
+Normalization Scope
+Vendor names
+Item descriptions
+Units (kg vs MT vs nos)
+Currency (₹ baseline)
+Manual Overrides
+Must be persisted
+Must influence future matches
+Must be auditable
+
+4.6 MATCHING ENGINE (CORE INTELLECTUAL PROPERTY)
+Matching Dimensions
+Vendor
+Item / service
+Date validity
+Unit compatibility
+Matching Output
+Matched entity IDs
+Confidence score
+Matching rationale (implicit)
+Design Rule
+No match without confidence score.
+
+4.7 RULES ENGINE (STRICT, DETERMINISTIC)
+Rules must be:
+Deterministic
+Explainable
+Re-playable
+V1 RULE SET (LOCKED)
+Rule 1 — Invoice vs Contract Price
+Contract must be valid on invoice date
+Unit must be convertible
+Partial matches allowed with confidence <100%
+Rule 2 — Duplicate Invoice
+Exact duplicate
+Near duplicate (amount + vendor + temporal proximity)
+Rule 3 — Quantity Mismatch
+Invoice > GRN
+Invoice > PO (if GRN absent)
+
+4.8 LEAKAGE OBJECT (MOST IMPORTANT DATA STRUCTURE)
+A leakage object is immutable once accepted.
+Mandatory attributes:
+Leakage type
+Financial impact (₹)
+Confidence
+Evidence references
+Source document links
+Human explanation string
+If a leakage cannot be explained in plain English, it must not exist.
+
+4.9 REVIEW & VALIDATION WORKFLOW (V1)
+Why this exists
+Prevent false positives
+Build CFO trust
+Allow learning loop
+Workflow
+Auto-generated → Review required
+Reviewer can:
+Accept
+Reject
+Modify assumptions
+All actions logged
+
+4.10 REPORTING REQUIREMENTS (VERY DEEP)
+4.10.1 CFO Summary
+Must answer in one page:
+How much money
+From whom
+Why
+How confident
+4.10.2 Audit Evidence Pack
+Each finding must be defensible if:
+Vendor disputes it
+Internal audit escalates it
+CFO forwards it
+This is not optional.
+
+4.11 DASHBOARD BEHAVIOR (NOT JUST UI)
+Dashboards are:
+Read-only in V1
+Summary-driven
+Export-centric
+No inline editing of financial data.
+
+4.12 PERFORMANCE EXPECTATIONS (V1)
+10,000 invoices per client should be processable within hours
+Batch processing preferred
+No real-time SLA
+
+4.13 Expected Turnaround Time
+
+4.14 V1 Success Criteria
+Identify ≥1% leakage in analysed spend
+CFO accepts findings as valid
+At least one paid recovery engagement
+
+5. VERSION 2 — ENGINEERING SCALE & AUTOMATION
+5.1 Key Technical Shifts
+Asynchronous processing
+Queue-based ingestion
+Multi-tenant isolation
+
+5.2 Automation Goals
+Reduce manual review by 60–70%
+Auto-resolve high-confidence matches
+Pattern learning by vendor
+
+5.3 Integrations
+Tally (file export first)
+SAP (IDoc / CSV before API)
+Cloud storage connectors
+
+6. VERSION 3 — STRATEGIC PLATFORM
+6.1 Product Becomes
+Continuous verification layer
+Vendor pricing truth engine
+Financial control primitive
+
+6.2 Advanced Capabilities
+Price creep detection
+Contract drift alerts
+Vendor risk scoring
+Automated debit note suggestions
+
+7. SECURITY & DATA GOVERNANCE (ENGINEERING VIEW)
+Mandatory
+Tenant isolation
+Encryption at rest & transit
+Access logs
+Data deletion workflows
+Explicitly NOT Required (in V1)
+SOC2
+ISO
+PCI
+
+8. CLIENT USAGE MODEL (REALITY)
+This is not daily software in V1.
+Usage pattern:
+Quarterly / half-yearly analysis
+One-time uploads
+Review + export
+Offline recovery action
+Notify the Client through the Software & Email once the process is accomplished.
+This must influence UX and infra decisions.
+
+9. ENGINEERING SUCCESS METRICS
+Engineering is successful if:
+Leakage is detected correctly
+Evidence is trusted
+Turnaround is fast
+System is stable under messy data
+Not if:
+UI is beautiful
+Code is overly abstract
+Everything is automated prematurely
+
+10. FINAL DIRECTION TO TECH CO-FOUNDER
+Build for truth, not elegance.
+Build for trust, not scale.
+Build for money, not metrics.
+Scale comes after proof.
+
+Version | Purpose
+V1 | Money detection + proof (service-assisted)
+V2 | Speed, automation, concurrency
+V3 | Continuous verification & control layer
+
+Stage | Time
+Data received | Day 0
+Processing & review | 5–8 days
+Report delivery | Day 10
+CFO review | Day 10–14
+

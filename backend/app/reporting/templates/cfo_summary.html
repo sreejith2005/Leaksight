@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LeakSight — Commercial Leakage Analysis</title>
+    <style>
+        /* Inline CSS for WeasyPrint — readable, not beautiful */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 11pt;
+            color: #1a1a1a;
+            background: #ffffff;
+            line-height: 1.5;
+            padding: 30px;
+        }
+
+        /* Header */
+        .header {
+            border-bottom: 3px solid #2c3e50;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+        .header h1 {
+            font-size: 20pt;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        .header .subtitle {
+            font-size: 10pt;
+            color: #555;
+        }
+        .header .meta {
+            font-size: 9pt;
+            color: #777;
+            margin-top: 5px;
+        }
+
+        /* Executive summary box */
+        .exec-summary {
+            background: #f7f9fc;
+            border: 1px solid #d0d7de;
+            border-left: 5px solid #2c3e50;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        .exec-summary .total-amount {
+            font-size: 24pt;
+            font-weight: bold;
+            color: #c0392b;
+        }
+        .exec-summary .currency-note {
+            font-size: 10pt;
+            color: #555;
+            margin-top: 5px;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 10pt;
+        }
+        table th {
+            background: #2c3e50;
+            color: #ffffff;
+            text-align: left;
+            padding: 8px 10px;
+            font-weight: bold;
+        }
+        table td {
+            padding: 6px 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        table tr:nth-child(even) { background: #f9f9f9; }
+        .num { text-align: right; }
+
+        /* Section headings */
+        h2 {
+            font-size: 13pt;
+            color: #2c3e50;
+            border-bottom: 1px solid #d0d7de;
+            padding-bottom: 5px;
+            margin-bottom: 12px;
+            margin-top: 20px;
+        }
+
+        /* Partial success notice */
+        .notice-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-left: 5px solid #ffc107;
+            padding: 12px 15px;
+            margin-bottom: 20px;
+            font-size: 10pt;
+        }
+        .notice-box strong { color: #856404; }
+
+        /* Footer */
+        .footer {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 1px solid #d0d7de;
+            font-size: 9pt;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header">
+        <h1>LeakSight</h1>
+        <div class="subtitle">Commercial Leakage Analysis</div>
+        <div class="meta">
+            Run ID: {{ run_id }} &nbsp;|&nbsp;
+            Status: {{ run_status }} &nbsp;|&nbsp;
+            Generated: {{ report_generated_at }}
+        </div>
+    </div>
+
+    <!-- Partial success notice (if applicable) -->
+    {% if partial_success_notes %}
+    <div class="notice-box">
+        <strong>Notice — Partial Success:</strong> {{ partial_success_notes }}
+    </div>
+    {% endif %}
+
+    <!-- Executive Summary -->
+    <div class="exec-summary">
+        <div class="total-amount">{{ currency }} {{ "{:,.2f}".format(total_leakage_amount|float) }}</div>
+        <div class="currency-note">
+            Total Accepted Leakage &nbsp;|&nbsp;
+            {{ pending_review_count }} record(s) pending review
+            {% if pending_fx_rate_count > 0 %}
+                &nbsp;|&nbsp; {{ pending_fx_rate_count }} record(s) pending FX rate
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Table 1: Leakage by Vendor -->
+    <h2>Leakage by Vendor</h2>
+    {% if leakage_by_vendor %}
+    <table>
+        <thead>
+            <tr>
+                <th>Vendor Name</th>
+                <th class="num">Leakage Amount ({{ currency }})</th>
+                <th class="num">Record Count</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for v in leakage_by_vendor %}
+            <tr>
+                <td>{{ v.vendor_name }}</td>
+                <td class="num">{{ "{:,.2f}".format(v.total_amount|float) }}</td>
+                <td class="num">{{ v.record_count }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No accepted leakage records found.</p>
+    {% endif %}
+
+    <!-- Table 2: Leakage by Rule -->
+    <h2>Leakage by Rule</h2>
+    {% if leakage_by_rule %}
+    <table>
+        <thead>
+            <tr>
+                <th>Rule Type</th>
+                <th class="num">Leakage Amount ({{ currency }})</th>
+                <th class="num">Record Count</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in leakage_by_rule %}
+            <tr>
+                <td>{{ r.rule_type }}</td>
+                <td class="num">{{ "{:,.2f}".format(r.total_amount|float) }}</td>
+                <td class="num">{{ r.record_count }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No accepted leakage records found.</p>
+    {% endif %}
+
+    <!-- Table 3: Confidence Summary -->
+    <h2>Confidence Summary</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Confidence Band</th>
+                <th class="num">Record Count</th>
+                <th class="num">Amount ({{ currency }})</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>High (&ge; 90%)</td>
+                <td class="num">{{ leakage_by_confidence_band.high_count }}</td>
+                <td class="num">{{ "{:,.2f}".format(leakage_by_confidence_band.high_amount|float) }}</td>
+            </tr>
+            <tr>
+                <td>Medium (70% &ndash; 89%)</td>
+                <td class="num">{{ leakage_by_confidence_band.medium_count }}</td>
+                <td class="num">{{ "{:,.2f}".format(leakage_by_confidence_band.medium_amount|float) }}</td>
+            </tr>
+            <tr>
+                <td>Low (&lt; 70%)</td>
+                <td class="num">{{ leakage_by_confidence_band.low_count }}</td>
+                <td class="num">{{ "{:,.2f}".format(leakage_by_confidence_band.low_amount|float) }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Footer -->
+    <div class="footer">
+        This report reflects accepted findings only. Pending and rejected findings
+        are excluded from all totals.<br>
+        Report generated: {{ report_generated_at }}
+    </div>
+
+</body>
+</html>

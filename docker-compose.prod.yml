@@ -1,0 +1,146 @@
+# LeakSight V1 — Production Docker Compose
+# Source: docs/ARCHITECTURE.md Section 7, docs/DECISIONS.md ADR-006
+#
+# Two-network architecture:
+#   - internal (bridge, internal: true) — no outbound internet: postgres, redis, worker
+#   - external (bridge) — user-facing traffic: nginx, backend
+#   - backend is on BOTH networks (serves API + talks to DB/Redis)
+
+services:
+
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - /opt/leaksight/data/postgres:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_buffers=4GB"
+      - "-c"
+      - "work_mem=32MB"
+      - "-c"
+      - "maintenance_work_mem=512MB"
+      - "-c"
+      - "effective_cache_size=12GB"
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - /opt/leaksight/data/redis:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: leaksight/backend:latest
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - /opt/leaksight/data/documents:/app/data/documents
+      - /opt/leaksight/logs:/app/logs
+    networks:
+      - internal
+      - external
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  worker:
+    image: leaksight/backend:latest
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - /opt/leaksight/data/documents:/app/data/documents
+      - /opt/leaksight/logs:/app/logs
+    networks:
+      - internal
+      # CRITICAL: Worker is on 'internal' network ONLY — no outbound internet
+      # This enforces ADR-006 (docs/DECISIONS.md)
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2 --max-tasks-per-child=50
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.core.celery_app inspect ping --timeout 10 || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 10G
+        reservations:
+          memory: 4G
+    shm_size: '2g'
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /opt/leaksight/nginx/conf:/etc/nginx/conf.d
+      - /opt/leaksight/nginx/certs:/etc/nginx/certs
+      - /opt/leaksight/logs/nginx:/var/log/nginx
+      - /opt/leaksight/app/frontend/dist:/usr/share/nginx/html:ro
+    networks:
+      - external
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      backend:
+        condition: service_healthy
+
+networks:
+  internal:
+    driver: bridge
+    internal: true    # No outbound internet — enforces data sovereignty (ADR-006)
+  external:
+    driver: bridge

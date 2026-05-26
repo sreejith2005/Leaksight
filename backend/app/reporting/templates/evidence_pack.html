@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LeakSight — Evidence Pack</title>
+    <style>
+        /* Inline CSS for WeasyPrint — readable, not beautiful */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 10pt;
+            color: #1a1a1a;
+            background: #ffffff;
+            line-height: 1.5;
+            padding: 30px;
+        }
+
+        /* Cover page */
+        .cover {
+            text-align: center;
+            padding-top: 100px;
+            padding-bottom: 60px;
+            page-break-after: always;
+        }
+        .cover h1 {
+            font-size: 24pt;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .cover .subtitle {
+            font-size: 14pt;
+            color: #555;
+            margin-bottom: 30px;
+        }
+        .cover .meta-table {
+            display: inline-block;
+            text-align: left;
+            font-size: 11pt;
+        }
+        .cover .meta-table td {
+            padding: 4px 15px;
+        }
+        .cover .meta-table td:first-child {
+            font-weight: bold;
+            color: #555;
+        }
+
+        /* Table of contents */
+        .toc {
+            page-break-after: always;
+        }
+        .toc h2 {
+            font-size: 14pt;
+            color: #2c3e50;
+            border-bottom: 2px solid #2c3e50;
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+            font-size: 9pt;
+        }
+        table th {
+            background: #2c3e50;
+            color: #ffffff;
+            text-align: left;
+            padding: 6px 8px;
+            font-weight: bold;
+        }
+        table td {
+            padding: 5px 8px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        table tr:nth-child(even) { background: #f9f9f9; }
+        .num { text-align: right; }
+
+        /* Section headings */
+        h2 {
+            font-size: 13pt;
+            color: #2c3e50;
+            border-bottom: 1px solid #d0d7de;
+            padding-bottom: 5px;
+            margin-bottom: 12px;
+            margin-top: 20px;
+        }
+        h3 {
+            font-size: 11pt;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            margin-top: 10px;
+        }
+
+        /* Finding section */
+        .finding {
+            page-break-inside: avoid;
+            margin-bottom: 25px;
+            border: 1px solid #d0d7de;
+            padding: 15px;
+        }
+        .finding-header {
+            background: #f7f9fc;
+            padding: 10px 12px;
+            margin: -15px -15px 15px -15px;
+            border-bottom: 1px solid #d0d7de;
+        }
+        .finding-header .finding-number {
+            font-size: 12pt;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .finding-header .finding-meta {
+            font-size: 9pt;
+            color: #555;
+            margin-top: 3px;
+        }
+        .finding-header .amount {
+            font-size: 14pt;
+            font-weight: bold;
+            color: #c0392b;
+            float: right;
+        }
+
+        /* Explanation box */
+        .explanation-box {
+            background: #f0f4f8;
+            border-left: 4px solid #2c3e50;
+            padding: 10px 15px;
+            margin-bottom: 12px;
+            font-size: 10pt;
+        }
+
+        /* Conversion/FX notes */
+        .note-box {
+            background: #fff8e1;
+            border: 1px solid #ffe082;
+            border-left: 4px solid #ffc107;
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            font-size: 9pt;
+        }
+
+        /* Divider */
+        .divider {
+            border-top: 2px solid #d0d7de;
+            margin: 20px 0;
+        }
+
+        /* Confidence badge */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 9pt;
+            font-weight: bold;
+        }
+        .badge-high { background: #d4edda; color: #155724; }
+        .badge-medium { background: #fff3cd; color: #856404; }
+        .badge-low { background: #f8d7da; color: #721c24; }
+
+        /* No findings */
+        .no-findings {
+            text-align: center;
+            padding: 40px;
+            color: #555;
+            font-size: 12pt;
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 1px solid #d0d7de;
+            font-size: 8pt;
+            color: #999;
+        }
+
+        /* Clearfix */
+        .clearfix::after {
+            content: "";
+            clear: both;
+            display: table;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Cover Page -->
+    <div class="cover">
+        <h1>LeakSight</h1>
+        <div class="subtitle">Evidence Pack &mdash; Commercial Leakage Findings</div>
+        <br><br>
+        <table class="meta-table" style="margin: 0 auto;">
+            <tr><td>Run ID:</td><td>{{ run_id }}</td></tr>
+            <tr><td>Tenant:</td><td>{{ tenant_name }}</td></tr>
+            <tr><td>Generated:</td><td>{{ report_generated_at }}</td></tr>
+            <tr><td>Total Findings:</td><td>{{ findings|length }}</td></tr>
+            <tr><td>Total Leakage:</td><td>{{ currency }} {{ "{:,.2f}".format(total_leakage_amount|float) }}</td></tr>
+        </table>
+    </div>
+
+    {% if findings %}
+
+    <!-- Table of Contents -->
+    <div class="toc">
+        <h2>Table of Contents</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Vendor</th>
+                    <th>Rule Type</th>
+                    <th class="num">Amount ({{ currency }})</th>
+                    <th>Confidence</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in findings %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ f.vendor_name }}</td>
+                    <td>{{ f.leakage_type }}</td>
+                    <td class="num">{{ "{:,.2f}".format(f.amount|float) }}</td>
+                    <td>
+                        <span class="badge badge-{{ f.confidence_label|lower }}">
+                            {{ f.confidence_label }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Findings -->
+    {% for f in findings %}
+    <div class="finding">
+        <div class="finding-header clearfix">
+            <span class="amount">{{ f.currency }} {{ "{:,.2f}".format(f.amount|float) }}</span>
+            <div class="finding-number">
+                Finding #{{ loop.index }} &mdash; {{ f.leakage_type }}
+            </div>
+            <div class="finding-meta">
+                Confidence:
+                <span class="badge badge-{{ f.confidence_label|lower }}">
+                    {{ f.confidence_label }} ({{ "%.0f"|format(f.confidence * 100) }}%)
+                </span>
+                &nbsp;|&nbsp; Rule: {{ f.rule_applied }}
+            </div>
+        </div>
+
+        <!-- Explanation -->
+        <h3>Explanation</h3>
+        <div class="explanation-box">
+            {{ f.explanation }}
+        </div>
+
+        <!-- Invoice Details -->
+        <h3>Invoice Details</h3>
+        <table>
+            <tr><th>Field</th><th>Value</th></tr>
+            <tr><td>Invoice Number</td><td>{{ f.invoice_number }}</td></tr>
+            <tr><td>Invoice Date</td><td>{{ f.invoice_date or "N/A" }}</td></tr>
+            <tr><td>Vendor</td><td>{{ f.vendor_name }}</td></tr>
+            <tr><td>Item Description</td><td>{{ f.invoice_line_item.item_desc or "N/A" }}</td></tr>
+            <tr><td>Quantity</td><td class="num">{{ f.invoice_line_item.quantity or "N/A" }}</td></tr>
+            <tr><td>Unit</td><td>{{ f.invoice_line_item.unit or "N/A" }}</td></tr>
+            <tr><td>Unit Price Billed</td><td class="num">{{ f.invoice_line_item.unit_price or "N/A" }}</td></tr>
+        </table>
+
+        <!-- Contract Reference -->
+        <h3>Contract Reference</h3>
+        <table>
+            <tr><th>Field</th><th>Value</th></tr>
+            <tr><td>Valid From</td><td>{{ f.contract_reference.valid_from or "N/A" }}</td></tr>
+            <tr><td>Valid To</td><td>{{ f.contract_reference.valid_to or "N/A" }}</td></tr>
+            <tr><td>Agreed Unit Price</td><td class="num">{{ f.contract_reference.unit_price or "N/A" }}</td></tr>
+            <tr><td>Agreed Unit</td><td>{{ f.contract_reference.unit or "N/A" }}</td></tr>
+            {% if f.contract_reference.version_number %}
+            <tr><td>Contract Version</td><td>{{ f.contract_reference.version_number }}</td></tr>
+            {% endif %}
+        </table>
+
+        <!-- Unit Conversion Note -->
+        {% if f.unit_conversion_applied and f.unit_conversion_details %}
+        <div class="note-box">
+            <strong>Unit Conversion Applied:</strong>
+            {{ f.unit_conversion_details.get("from_unit", "N/A") }} &rarr;
+            {{ f.unit_conversion_details.get("to_unit", "N/A") }}
+            (factor: {{ f.unit_conversion_details.get("factor", "N/A") }},
+            source: {{ f.unit_conversion_details.get("source", "N/A") }})
+        </div>
+        {% endif %}
+
+        <!-- FX Rate Note -->
+        {% if f.fx_rate_applied %}
+        <div class="note-box">
+            <strong>FX Conversion Applied:</strong>
+            {{ f.fx_rate_applied.get("from_currency", "N/A") }} &rarr;
+            {{ f.fx_rate_applied.get("to_currency", "N/A") }}
+            (rate: {{ f.fx_rate_applied.get("rate", "N/A") }},
+            date: {{ f.fx_rate_applied.get("rate_date", "N/A") }},
+            source: {{ f.fx_rate_applied.get("source", "N/A") }})
+        </div>
+        {% endif %}
+    </div>
+
+    {% if not loop.last %}
+    <div class="divider"></div>
+    {% endif %}
+
+    {% endfor %}
+
+    {% else %}
+
+    <!-- No Findings -->
+    <div class="no-findings">
+        <h2>No Confirmed Leakage Findings</h2>
+        <p>This analysis run produced no accepted leakage findings.</p>
+    </div>
+
+    {% endif %}
+
+    <!-- Footer -->
+    <div class="footer">
+        This evidence pack contains accepted findings only. Each finding is
+        self-contained and traceable to source documents.<br>
+        Generated by LeakSight &mdash; {{ report_generated_at }}
+    </div>
+
+</body>
+</html>

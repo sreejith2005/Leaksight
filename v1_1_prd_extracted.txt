@@ -1,0 +1,256 @@
+PRODUCT REQUIREMENTS DOCUMENT
+Version 1.1 (Modular Suite)
+Product Suite Name (Internal)
+Enterprise Commercial Intelligence Suite
+
+0. STRATEGIC STRUCTURE
+V1.1 consists of three independent but complementary modules:
+Core Module – Vendor Price Leakage Detection Engine
+Tool A – Contract Structuring & ERP Mapping Engine
+Tool B – Document Integrity & Tamper Detection Engine
+Each module:
+Can be sold independently
+Can function independently
+Can integrate optionally
+
+1. MODULE 1 – VENDOR PRICE LEAKAGE DETECTION ENGINE (UNCHANGED CORE)
+1.1 Purpose
+Detect financial overbilling and commercial mismatches between:
+Contracts
+Purchase Orders
+Invoices
+GRNs
+Primary objective:
+Identify recoverable financial leakage.
+
+1.2 Supported Leakage Types (V1.1)
+Invoice vs Contract price mismatch
+Duplicate invoices
+Quantity mismatch (Invoice vs PO/GRN)
+
+1.3 Inputs
+Invoices (PDF, Excel, CSV)
+Contracts (PDF, Word, Excel)
+Purchase Orders
+GRNs (optional)
+
+1.4 Outputs
+Leakage summary (₹ value)
+Vendor-wise breakdown
+Line-item findings
+Evidence pack (PDF)
+Exportable Excel report
+
+1.5 Workflow
+Upload → Parse → Normalize → Match → Apply Rules → Generate Leakage Records → Review → Export
+
+1.6 Manual vs Automated
+Automated:
+Parsing
+Matching
+Rule application
+Calculation
+Report generation
+Manual:
+Low-confidence review
+Edge case validation
+
+2. TOOL A – CONTRACT STRUCTURING & ERP MAPPING ENGINE
+(Separate product – may be bundled or sold independently)
+
+2.1 Problem Statement
+Large enterprises store contracts as:
+Unstructured PDFs
+Word files
+Multi-page agreements (10–1000 pages)
+Pricing tables must be manually entered into ERP systems like:
+SAP
+Tally
+Oracle
+Manual entry causes:
+Pricing errors
+Amendment misalignment
+Commercial drift
+Downstream leakage
+
+2.2 Objective
+Convert contract documents into structured commercial data suitable for ERP import.
+
+2.3 Supported Inputs
+PDF (digital)
+PDF (scanned)
+Word (.docx)
+Excel annexures
+
+2.4 Functional Requirements
+2.4.1 Table Extraction
+Detect pricing tables automatically
+Extract columns (item, unit, rate, slab, etc.)
+Handle multi-page tables
+
+2.4.2 Clause Extraction
+Extract:
+Effective date
+Expiry date
+Amendment reference
+Escalation clauses (if clearly defined)
+
+2.4.3 Version Tracking
+Identify contract versions
+Compare amendments to base contract
+Highlight pricing changes
+
+2.4.4 Output Formats
+Output Type 1 – Structured Excel:
+Vendor name
+Contract ID
+Validity dates
+Item
+Unit
+Unit price
+Currency
+Version number
+Output Type 2 – ERP Schema (JSON/CSV):
+ERP-ready import file format
+No direct ERP API integration in V1.1.
+
+2.5 AI Usage
+Permitted:
+Table detection
+Entity extraction
+Clause classification
+Version linking
+Not permitted:
+Pricing assumptions
+Guessing missing values
+
+2.6 Manual vs Automated
+Automated:
+Table extraction
+Field classification
+Basic version detection
+Manual:
+Ambiguous clause confirmation
+Final ERP export approval
+
+2.7 Performance Expectations
+Must handle 1000-page contracts
+Must process large annexures
+Batch processing allowed
+Accuracy target ≥85% for clean PDFs
+
+3. TOOL B – DOCUMENT INTEGRITY & TAMPER DETECTION ENGINE
+(Separate compliance/risk tool)
+
+3.1 Problem Statement
+Enterprises face risks from:
+Altered contracts
+Modified invoices
+Silent pricing changes
+Internal manipulation
+Version confusion
+Small changes can cause:
+Financial loss
+Legal exposure
+Audit failures
+
+3.2 Objective
+Detect potential tampering or integrity issues in enterprise documents.
+This is not forensic certification.
+It is risk flagging and anomaly detection.
+
+3.3 Supported Document Types
+PDF
+Word
+Excel
+Scanned documents
+
+3.4 Functional Capabilities
+3.4.1 Hash Fingerprinting
+Generate SHA-256 hash
+Store baseline fingerprint
+Detect modification upon re-upload
+
+3.4.2 Metadata Analysis
+Extract:
+Creation date
+Last modified date
+Author
+Editing software
+Revision history (if available)
+Flag anomalies such as:
+Modification after approval date
+Author mismatch
+Suspicious editing tools
+
+3.4.3 Structural Anomaly Detection
+Detect:
+Inconsistent fonts in pricing section
+Mixed formatting
+Overlapping text layers
+OCR mismatches
+
+3.4.4 Version Comparison
+Compare document versions
+Highlight changed clauses
+Highlight changed numeric values
+Quantify financial impact of changes
+
+3.5 Output
+Each document produces:
+Integrity score (0–100)
+Risk flags
+Metadata summary
+Change log (if applicable)
+
+3.6 Manual vs Automated
+Automated:
+Hashing
+Metadata extraction
+Version diff
+Formatting anomaly detection
+Manual:
+Risk validation
+Escalation tagging
+
+4. SYSTEM ARCHITECTURE (MODULAR)
+
+Modules can operate:
+Independently
+Or integrated
+
+5. SECURITY REQUIREMENTS (ALL MODULES)
+Tenant isolation
+Encryption at rest
+Encryption in transit
+Audit logs
+Role-based access
+Data deletion on request
+Hash storage for document baseline
+SOC2 not required in V1.1.
+
+6. PROBLEMS SOLVED FIRST
+Priority order:
+Leakage Detection (Revenue Wedge)
+Contract Structuring (Enterprise Value)
+Tamper Detection (Risk Layer)
+Do not reverse this order.
+
+7. WHAT CLIENTS WILL USE DAILY
+Leakage Engine:
+Quarterly or monthly analysis
+Contract Structuring:
+During onboarding / contract renewal
+Tamper Detection:
+During audits
+During dispute investigation
+
+8. STRATEGIC POSITIONING
+This is now a suite, not a single tool.
+You can sell:
+Leakage as ROI product
+Contract Structuring as ERP efficiency product
+Tamper Detection as risk control product
+Or bundle all three as:
+Enterprise Commercial Intelligence Suite
+
