@@ -18,6 +18,7 @@ build/
 .venv/
 venv/
 ENV/
+.venv2_312/
 
 # IDE
 .vscode/
@@ -67,3 +68,4 @@ alembic/versions/__pycache__/
 # Temporary files
 *.tmp
 *.bak
+_fresh_token.txt

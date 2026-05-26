@@ -11,7 +11,7 @@ docs/HOW_TO_START.md
 Current local path:
 
 ```powershell
-C:\Users\user\Leaksight_recovered_git
+C:\Users\user\Downloads\Leaksight-master
 ```
 
 Main local ports:

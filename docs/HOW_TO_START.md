@@ -3,7 +3,7 @@
 Current local project folder:
 
 ```powershell
-C:\Users\user\Leaksight_recovered_git
+C:\Users\user\Downloads\Leaksight-master
 ```
 
 ## One-Time Setup
@@ -70,10 +70,10 @@ If relative paths are awkward in PowerShell, use explicit paths:
 
 ```powershell
 cd backend
-& "C:\Users\user\Leaksight_recovered_git\.venv\Scripts\python.exe" -m alembic upgrade head
+& "C:\Users\user\Downloads\Leaksight-master\.venv\Scripts\python.exe" -m alembic upgrade head
 cd ..
 $env:PYTHONIOENCODING="utf-8"
-& "C:\Users\user\Leaksight_recovered_git\.venv\Scripts\python.exe" -m backend.app.scripts.seed
+& "C:\Users\user\Downloads\Leaksight-master\.venv\Scripts\python.exe" -m backend.app.scripts.seed
 ```
 
 Create a local admin user when needed:
